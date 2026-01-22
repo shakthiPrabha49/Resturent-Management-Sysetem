@@ -1,0 +1,80 @@
+
+export enum UserRole {
+  OWNER = 'OWNER',
+  CASHIER = 'CASHIER',
+  CHEF = 'CHEF',
+  WAITRESS = 'WAITRESS'
+}
+
+export enum TableStatus {
+  AVAILABLE = 'Available',
+  ORDERING = 'Ordering',
+  COOKING = 'Cooking',
+  READY = 'Ready',
+  SERVED = 'Served',
+  COMPLETED = 'Completed'
+}
+
+export enum OrderStatus {
+  PENDING = 'Pending',
+  COOKING = 'Cooking',
+  READY = 'Ready',
+  SERVED = 'Served',
+  PAID = 'Paid'
+}
+
+export interface User {
+  id: string;
+  username: string;
+  role: UserRole;
+  name: string;
+}
+
+export interface MenuItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  isAvailable: boolean;
+  description?: string;
+}
+
+export interface Table {
+  id: string;
+  number: number;
+  status: TableStatus;
+}
+
+export interface OrderItem {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  status: 'Pending' | 'Cooking' | 'Completed';
+}
+
+export interface Order {
+  id: string;
+  tableId: string;
+  tableNumber: number;
+  items: OrderItem[];
+  status: OrderStatus;
+  timestamp: number;
+  total: number;
+}
+
+export interface StockEntry {
+  id: string;
+  itemName: string;
+  quantity: number;
+  purchaseDate: number;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'IN' | 'OUT';
+  amount: number;
+  description: string;
+  timestamp: number;
+  category: string;
+}

@@ -1,0 +1,7 @@
+{
+  "name": "GustoFlow - Advanced Restaurant Management",
+  "description": "A comprehensive restaurant operations system featuring role-based dashboards, FIFO stock management, real-time order tracking, and Gemini-powered business insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
