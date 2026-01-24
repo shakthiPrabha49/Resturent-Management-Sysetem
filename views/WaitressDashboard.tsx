@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem } from '../types';
+import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem } from '../types.ts';
 import { Users, Clock, Plus, Minus, Send, CheckCircle2, ShoppingBag } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.ts';
 
 interface WaitressDashboardProps {
   tables: Table[];

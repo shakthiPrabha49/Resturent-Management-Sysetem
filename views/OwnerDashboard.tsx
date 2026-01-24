@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Order, Transaction, StockEntry, MenuItem } from '../types';
+import { Order, Transaction, StockEntry, MenuItem } from '../types.ts';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { TrendingUp, Users, DollarSign, Package, Sparkles, Plus, Edit2, Check, Loader2 } from 'lucide-react';
-import { getBusinessInsights } from '../geminiService';
-import { supabase } from '../supabaseClient';
+import { getBusinessInsights } from '../geminiService.ts';
+import { supabase } from '../supabaseClient.ts';
 
 interface OwnerDashboardProps {
   orders: Order[];

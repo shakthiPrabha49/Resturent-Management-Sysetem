@@ -1,5 +1,5 @@
 
-import { User, UserRole, MenuItem, Table, TableStatus, StockEntry } from './types';
+import { User, UserRole, MenuItem, Table, TableStatus, StockEntry } from './types.ts';
 
 export const INITIAL_USERS: User[] = [
   { id: '1', username: 'owner', role: UserRole.OWNER, name: 'Admin Owner' },

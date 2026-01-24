@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Order, OrderStatus, Transaction } from '../types';
+import { Order, OrderStatus, Transaction } from '../types.ts';
 import { CreditCard, History, Printer, CheckCircle, Wallet, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
 
 interface CashierDashboardProps {

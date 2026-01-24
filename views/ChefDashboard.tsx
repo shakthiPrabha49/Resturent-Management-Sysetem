@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { Order, OrderStatus, TableStatus, StockEntry } from '../types';
+import { Order, OrderStatus, TableStatus, StockEntry } from '../types.ts';
 import { ChefHat, ClipboardCheck, Timer, Package, CheckCircle2, Plus, Loader2 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.ts';
 
 interface ChefDashboardProps {
   orders: Order[];
