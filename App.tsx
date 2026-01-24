@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus 
 } from './types';
-import { INITIAL_USERS, INITIAL_TABLES, INITIAL_MENU, INITIAL_STOCK } from './constants';
+import { INITIAL_USERS } from './constants';
 import Login from './views/Login';
 import OwnerDashboard from './views/OwnerDashboard';
 import CashierDashboard from './views/CashierDashboard';
@@ -11,67 +11,120 @@ import ChefDashboard from './views/ChefDashboard';
 import WaitressDashboard from './views/WaitressDashboard';
 import Sidebar from './components/Sidebar';
 import { LogOut, Bell } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 const App: React.FC = () => {
-  // Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-
-  // Global Restaurant State
-  const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
-  const [menu, setMenu] = useState<MenuItem[]>(INITIAL_MENU);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [stock, setStock] = useState<StockEntry[]>(INITIAL_STOCK);
+  const [stock, setStock] = useState<StockEntry[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [notifications, setNotifications] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Helpers
   const addNotification = useCallback((msg: string) => {
     setNotifications(prev => [msg, ...prev].slice(0, 5));
-    // Simulate real-time toast or sound in a real app
   }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const [
+        { data: tablesData },
+        { data: menuData },
+        { data: ordersData },
+        { data: stockData },
+        { data: transData }
+      ] = await Promise.all([
+        supabase.from('tables').select('*').order('number'),
+        supabase.from('menu_items').select('*'),
+        supabase.from('orders').select('*').order('timestamp', { ascending: false }),
+        supabase.from('stock_entries').select('*').order('purchaseDate'),
+        supabase.from('transactions').select('*').order('timestamp', { ascending: false })
+      ]);
+
+      if (tablesData) setTables(tablesData);
+      if (menuData) setMenu(menuData);
+      if (ordersData) setOrders(ordersData);
+      if (stockData) setStock(stockData);
+      if (transData) setTransactions(transData);
+      setIsLoading(false);
+    };
+
+    fetchData();
+
+    // Real-time Subscriptions
+    const tableSub = supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
+      setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
+    }).subscribe();
+
+    const menuSub = supabase.channel('menu').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, payload => {
+      setMenu(curr => {
+        if (payload.eventType === 'UPDATE') return curr.map(m => m.id === payload.new.id ? payload.new as MenuItem : m);
+        if (payload.eventType === 'INSERT') return [...curr, payload.new as MenuItem];
+        return curr;
+      });
+    }).subscribe();
+
+    const orderSub = supabase.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
+      if (payload.eventType === 'INSERT') {
+        setOrders(curr => [payload.new as Order, ...curr]);
+        addNotification(`New order for Table ${payload.new.tableNumber}`);
+      } else if (payload.eventType === 'UPDATE') {
+        setOrders(curr => curr.map(o => o.id === payload.new.id ? payload.new as Order : o));
+      }
+    }).subscribe();
+
+    const stockSub = supabase.channel('stock').on('postgres_changes', { event: '*', schema: 'public', table: 'stock_entries' }, payload => {
+      // Re-fetch or update locally - re-fetching is safer for complex FIFO
+      supabase.from('stock_entries').select('*').order('purchaseDate').then(({ data }) => data && setStock(data));
+    }).subscribe();
+
+    const transSub = supabase.channel('trans').on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
+      if (payload.eventType === 'INSERT') setTransactions(curr => [payload.new as Transaction, ...curr]);
+    }).subscribe();
+
+    return () => {
+      supabase.removeChannel(tableSub);
+      supabase.removeChannel(menuSub);
+      supabase.removeChannel(orderSub);
+      supabase.removeChannel(stockSub);
+      supabase.removeChannel(transSub);
+    };
+  }, [addNotification]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     addNotification(`Welcome back, ${user.name}!`);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-  };
-
-  // Logic: Update Table Status
-  const updateTableStatus = useCallback((tableId: string, status: TableStatus) => {
-    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status } : t));
+  const updateTableStatus = useCallback(async (tableId: string, status: TableStatus) => {
+    await supabase.from('tables').update({ status }).eq('id', tableId);
   }, []);
 
-  // Logic: FIFO Stock Deduction
-  const deductStock = useCallback((itemName: string, quantity: number) => {
-    setStock(prev => {
-      let remaining = quantity;
-      const sortedStock = [...prev].sort((a, b) => a.purchaseDate - b.purchaseDate);
-      
-      const newStock = sortedStock.map(entry => {
-        if (entry.itemName === itemName && remaining > 0) {
-          const toDeduct = Math.min(entry.quantity, remaining);
-          remaining -= toDeduct;
-          return { ...entry, quantity: entry.quantity - toDeduct };
-        }
-        return entry;
-      }).filter(entry => entry.quantity > 0);
-
-      if (remaining > 0) {
-        addNotification(`Low stock warning: ${itemName} is out!`);
+  const deductStock = useCallback(async (itemName: string, quantity: number) => {
+    let remaining = quantity;
+    const sortedStock = [...stock].filter(s => s.itemName === itemName).sort((a, b) => a.purchaseDate - b.purchaseDate);
+    
+    for (const entry of sortedStock) {
+      if (remaining <= 0) break;
+      const toDeduct = Math.min(entry.quantity, remaining);
+      const newQty = entry.quantity - toDeduct;
+      if (newQty === 0) {
+        await supabase.from('stock_entries').delete().eq('id', entry.id);
+      } else {
+        await supabase.from('stock_entries').update({ quantity: newQty }).eq('id', entry.id);
       }
-      return newStock;
-    });
-  }, [addNotification]);
+      remaining -= toDeduct;
+    }
+    if (remaining > 0) addNotification(`Warning: ${itemName} is depleted!`);
+  }, [stock, addNotification]);
 
-  // Logic: Billing & Payment
-  const processPayment = useCallback((orderId: string, amount: number) => {
+  const processPayment = useCallback(async (orderId: string, amount: number) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
-
-    const newTransaction: Transaction = {
+    const newTransaction = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'IN',
       amount,
@@ -79,16 +132,15 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       category: 'Sales'
     };
+    await Promise.all([
+      supabase.from('transactions').insert(newTransaction),
+      supabase.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId),
+      updateTableStatus(order.tableId, TableStatus.AVAILABLE)
+    ]);
+  }, [orders, updateTableStatus]);
 
-    setTransactions(prev => [...prev, newTransaction]);
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.PAID } : o));
-    updateTableStatus(order.tableId, TableStatus.AVAILABLE);
-    addNotification(`Payment received for Table ${order.tableNumber}`);
-  }, [orders, updateTableStatus, addNotification]);
-
-  // Logic: Cash Book Expense
-  const addExpense = useCallback((amount: number, description: string) => {
-    const newTransaction: Transaction = {
+  const addExpense = useCallback(async (amount: number, description: string) => {
+    const newTransaction = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'OUT',
       amount,
@@ -96,108 +148,56 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       category: 'Expense'
     };
-    setTransactions(prev => [...prev, newTransaction]);
-    addNotification(`Expense recorded: ${description}`);
-  }, [addNotification]);
+    await supabase.from('transactions').insert(newTransaction);
+  }, []);
 
-  if (!currentUser) {
-    return <Login onLogin={handleLogin} users={INITIAL_USERS} />;
-  }
-
-  const renderDashboard = () => {
-    switch (currentUser.role) {
-      case UserRole.OWNER:
-        return (
-          <OwnerDashboard 
-            orders={orders} 
-            transactions={transactions} 
-            stock={stock}
-            menu={menu}
-            setMenu={setMenu}
-          />
-        );
-      case UserRole.CASHIER:
-        return (
-          <CashierDashboard 
-            orders={orders} 
-            processPayment={processPayment} 
-            transactions={transactions}
-            addExpense={addExpense}
-          />
-        );
-      case UserRole.CHEF:
-        return (
-          <ChefDashboard 
-            orders={orders} 
-            setOrders={setOrders} 
-            stock={stock} 
-            setStock={setStock}
-            deductStock={deductStock}
-            updateTableStatus={updateTableStatus}
-          />
-        );
-      case UserRole.WAITRESS:
-        return (
-          <WaitressDashboard 
-            tables={tables} 
-            menu={menu} 
-            orders={orders}
-            setOrders={setOrders}
-            updateTableStatus={updateTableStatus}
-            addNotification={addNotification}
-          />
-        );
-      default:
-        return <div>Access Denied</div>;
-    }
-  };
+  if (!currentUser) return <Login onLogin={handleLogin} users={INITIAL_USERS} />;
+  if (isLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-bold text-slate-500 font-mono tracking-widest">GUSTOFLOW CLOUD SYNC...</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      {/* Sidebar Navigation */}
-      <Sidebar role={currentUser.role} onLogout={handleLogout} userName={currentUser.name} />
-
-      {/* Main Content Area */}
+      <Sidebar role={currentUser.role} onLogout={() => setCurrentUser(null)} userName={currentUser.name} />
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
+        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">GustoFlow</h1>
-            <p className="text-sm text-slate-500">{currentUser.role} Dashboard</p>
+            <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">{currentUser.role} Control Panel</p>
           </div>
-          
           <div className="flex items-center gap-4">
             <div className="relative">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
                 {notifications.length > 0 && (
-                  <span className="absolute top-0 right-0 h-4 w-4 bg-rose-500 rounded-full text-[10px] text-white flex items-center justify-center border-2 border-white">
-                    {notifications.length}
-                  </span>
+                  <span className="absolute top-1 right-1 h-2 w-2 bg-rose-500 rounded-full border border-white"></span>
                 )}
               </button>
             </div>
-            
-            <div className="h-8 w-[1px] bg-slate-200" />
-            
+            <div className="h-8 w-[1px] bg-slate-100" />
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <p className="text-sm font-semibold">{currentUser.name}</p>
-                <p className="text-xs text-slate-400 capitalize">{currentUser.role.toLowerCase()}</p>
+                <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
+                <div className="flex items-center justify-end gap-1">
+                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Online</p>
+                </div>
               </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                title="Logout"
-              >
+              <button onClick={() => setCurrentUser(null)} className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
                 <LogOut size={20} />
               </button>
             </div>
           </div>
         </header>
-
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {renderDashboard()}
-        </div>
+        {currentUser.role === UserRole.OWNER && <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />}
+        {currentUser.role === UserRole.CASHIER && <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />}
+        {currentUser.role === UserRole.CHEF && <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />}
+        {currentUser.role === UserRole.WAITRESS && <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />}
       </main>
     </div>
   );

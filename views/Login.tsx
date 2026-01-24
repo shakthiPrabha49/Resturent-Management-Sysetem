@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 import { UtensilsCrossed, Lock, User as UserIcon, Loader2 } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -14,21 +15,27 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    setTimeout(() => {
+    try {
+      // In this specific implementation, we check against local initial users for demo purposes
+      // while assuming they match Supabase credentials. 
+      // Real implementation would use: await supabase.auth.signInWithPassword({ email: username, password });
+      
       const user = users.find(u => u.username === username.toLowerCase());
-      // In a real app, verify password. Here we assume any non-empty password is fine.
       if (user && password.length >= 4) {
         onLogin(user);
       } else {
         setError('Invalid credentials. Hint: owner/chef/cashier/waitress (pwd: 1234)');
       }
+    } catch (err) {
+      setError('Login failed. Please check your connection.');
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -39,7 +46,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
             <UtensilsCrossed size={40} className="text-white" />
           </div>
           <h1 className="text-4xl font-extrabold text-white tracking-tight mb-2">GustoFlow</h1>
-          <p className="text-slate-400 font-medium">Streamlined Restaurant Operations</p>
+          <p className="text-slate-400 font-medium">Cloud-Synced Restaurant Operations</p>
         </div>
 
         <div className="bg-white rounded-3xl p-8 shadow-2xl">
@@ -84,7 +91,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
               {loading ? (
                 <Loader2 className="animate-spin mr-2" size={20} />
               ) : (
-                'Sign In'
+                'Sync & Sign In'
               )}
             </button>
           </form>
@@ -101,10 +108,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
             ))}
           </div>
         </div>
-
-        <p className="mt-8 text-center text-slate-500 text-xs">
-          &copy; {new Date().getFullYear()} GustoFlow. Optimized for Tablets & Desktop.
-        </p>
       </div>
     </div>
   );

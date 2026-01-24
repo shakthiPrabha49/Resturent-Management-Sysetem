@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem } from '../types';
 import { Users, Clock, Plus, Minus, Send, CheckCircle2, ShoppingBag } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 interface WaitressDashboardProps {
   tables: Table[];
@@ -17,6 +18,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 }) => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [cart, setCart] = useState<OrderItem[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addToCart = (item: MenuItem) => {
     setCart(prev => {
@@ -38,8 +40,9 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     });
   };
 
-  const submitOrder = () => {
+  const submitOrder = async () => {
     if (!selectedTable || cart.length === 0) return;
+    setIsSubmitting(true);
 
     const total = cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
     const newOrder: Order = {
@@ -52,27 +55,32 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       total
     };
 
-    setOrders(prev => [...prev, newOrder]);
-    updateTableStatus(selectedTable.id, TableStatus.ORDERING);
-    addNotification(`Order sent for Table ${selectedTable.number}`);
-    setCart([]);
-    setSelectedTable(null);
+    const { error } = await supabase.from('orders').insert(newOrder);
+    
+    if (!error) {
+      await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
+      addNotification(`Order sent for Table ${selectedTable.number}`);
+      setCart([]);
+      setSelectedTable(null);
+    } else {
+      console.error("Submission error:", error);
+    }
+    setIsSubmitting(false);
   };
 
-  const markServed = (order: Order) => {
-    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: OrderStatus.SERVED } : o));
-    updateTableStatus(order.tableId, TableStatus.SERVED);
+  const markServed = async (order: Order) => {
+    await supabase.from('orders').update({ status: OrderStatus.SERVED }).eq('id', order.id);
+    await updateTableStatus(order.tableId, TableStatus.SERVED);
     addNotification(`Table ${order.tableNumber} served.`);
   };
 
-  const markDone = (order: Order) => {
-    updateTableStatus(order.tableId, TableStatus.COMPLETED);
+  const markDone = async (order: Order) => {
+    await updateTableStatus(order.tableId, TableStatus.COMPLETED);
     addNotification(`Table ${order.tableNumber} completed. Ready for billing.`);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      {/* Table Selection */}
       <div className="lg:col-span-2 space-y-6">
         <h2 className="text-xl font-bold flex items-center gap-2">
           <Users size={20} className="text-indigo-600" />
@@ -140,7 +148,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         </div>
       </div>
 
-      {/* Cart & Ordering Panel */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[600px]">
         {selectedTable ? (
           <div className="flex flex-col h-full p-6">
@@ -149,14 +156,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 <h3 className="text-xl font-bold">Table {selectedTable.number}</h3>
                 <p className="text-sm text-slate-500">Add items to order</p>
               </div>
-              <button 
-                onClick={() => setSelectedTable(null)}
-                className="p-2 hover:bg-slate-100 rounded-lg text-slate-400"
-              >
-                Cancel
-              </button>
+              <button onClick={() => setSelectedTable(null)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">Cancel</button>
             </div>
-
             <div className="flex-1 overflow-y-auto mb-6 pr-2">
               <div className="space-y-4">
                 {menu.map(item => (
@@ -166,19 +167,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                       <p className="text-xs text-slate-400">${item.price.toFixed(2)}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => removeFromCart(item.id)}
-                        className="w-7 h-7 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200"
-                      >
+                      <button onClick={() => removeFromCart(item.id)} className="w-7 h-7 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200">
                         <Minus size={14} />
                       </button>
                       <span className="w-4 text-center font-bold text-sm">
                         {cart.find(i => i.menuItemId === item.id)?.quantity || 0}
                       </span>
-                      <button 
-                        onClick={() => addToCart(item)}
-                        className="w-7 h-7 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                      >
+                      <button onClick={() => addToCart(item)} className="w-7 h-7 flex items-center justify-center bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
                         <Plus size={14} />
                       </button>
                     </div>
@@ -186,7 +181,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 ))}
               </div>
             </div>
-
             <div className="pt-6 border-t border-slate-100">
               <div className="flex justify-between items-center mb-4">
                 <span className="font-medium text-slate-500">Subtotal</span>
@@ -196,11 +190,10 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               </div>
               <button 
                 onClick={submitOrder}
-                disabled={cart.length === 0}
-                className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none"
+                disabled={cart.length === 0 || isSubmitting}
+                className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-50"
               >
-                <Send size={18} />
-                Send to Kitchen
+                {isSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <><Send size={18} /> Send to Kitchen</>}
               </button>
             </div>
           </div>
@@ -210,9 +203,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <ShoppingBag size={32} />
             </div>
             <h3 className="text-lg font-bold text-slate-800">No Table Selected</h3>
-            <p className="text-sm text-slate-400 max-w-[200px]">
-              Select an available table from the floor layout to start an order.
-            </p>
+            <p className="text-sm text-slate-400">Select an available table to start an order.</p>
           </div>
         )}
       </div>
