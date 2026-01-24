@@ -1,8 +1,10 @@
 
 import React, { useState, useRef } from 'react';
 import { AppSettings } from '../types.ts';
-import { Settings as SettingsIcon, Save, Image as ImageIcon, Store, Star, Loader2, Upload } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Image as ImageIcon, Store, Star, Loader2, Upload, AlertCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
+
+const SETTINGS_KEY = 'gustoflow_local_settings';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -14,14 +16,14 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const [slogan, setSlogan] = useState(settings.slogan);
   const [logoUrl, setLogoUrl] = useState(settings.logo_url);
   const [isSaving, setIsSaving] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (e.g., 2MB limit for base64 strings to prevent DB issues)
-      if (file.size > 2 * 1024 * 1024) {
-        alert("Logo file is too large. Please use an image under 2MB.");
+      if (file.size > 1 * 1024 * 1024) {
+        alert("Image is too large for cloud storage (1MB max for base64 strings). Please use a smaller image.");
         return;
       }
       const reader = new FileReader();
@@ -34,27 +36,36 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
 
   const saveSettings = async () => {
     setIsSaving(true);
-    // Use a fixed ID if none exists to ensure we only ever have one settings row
-    const targetId = settings.id === 'default' ? 'singleton_settings' : settings.id;
+    setDbError(null);
     
-    // Using upsert instead of update to handle initial creation of the settings row
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert({ 
-        id: targetId,
-        name, 
-        slogan, 
-        logo_url: logoUrl 
-      });
+    const targetId = settings.id || 'singleton_settings';
+    const updatedSettings = { id: targetId, name, slogan, logo_url: logoUrl };
 
-    if (!error) {
-      onSave({ id: targetId, name, slogan, logo_url: logoUrl });
-      alert('Settings updated successfully!');
-    } else {
-      console.error('Settings save error:', error);
-      alert(`Failed to save settings: ${error.message}`);
+    // 1. Save to localStorage immediately for instant update
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updatedSettings));
+    onSave(updatedSettings);
+
+    // 2. Attempt push to Cloud
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert(updatedSettings);
+
+      if (!error) {
+        alert('Settings synced to Cloud successfully!');
+      } else {
+        console.error('Database Error:', error);
+        if (error.message.includes("Could not find the table")) {
+          setDbError("Table 'app_settings' missing in Supabase. Branding saved to this browser only.");
+        } else {
+          setDbError(error.message);
+        }
+      }
+    } catch (e) {
+      setDbError("Network error. Settings saved locally.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   return (
@@ -64,15 +75,31 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Settings</h2>
           <p className="text-slate-500 font-medium">Manage your restaurant identity and branding</p>
         </div>
-        <button
-          onClick={saveSettings}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 disabled:opacity-50"
-        >
-          {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-          {isSaving ? 'Saving...' : 'Save Changes'}
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={saveSettings}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+            {isSaving ? 'Saving...' : 'Save Branding'}
+          </button>
+        </div>
       </div>
+
+      {dbError && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 text-amber-800">
+          <AlertCircle className="shrink-0" size={20} />
+          <div>
+            <p className="font-bold text-sm">Cloud Sync Warning</p>
+            <p className="text-xs opacity-80">{dbError}</p>
+            <p className="text-[10px] mt-2 font-mono bg-white/50 p-2 rounded border border-amber-100">
+              To fix cloud sync, run this SQL in Supabase:<br/>
+              create table app_settings (id text primary key, name text, slogan text, logo_url text);
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2 space-y-6">
@@ -134,7 +161,7 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
               
               <div className="flex-1 space-y-4 text-center md:text-left">
                 <h4 className="font-bold text-slate-800 text-lg">Restaurant Logo</h4>
-                <p className="text-slate-500 text-sm">Upload a high-quality image of your logo. Square formats work best for the dashboard layout.</p>
+                <p className="text-slate-500 text-sm">Square formats work best. Max 1MB.</p>
                 <button 
                   onClick={() => fileInputRef.current?.click()}
                   className="px-6 py-2 border-2 border-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition-all"
@@ -158,34 +185,34 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-6">
                 <Star className="text-amber-400 fill-amber-400" size={20} />
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Live Preview</span>
               </div>
               <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-white/10 rounded-2xl border border-white/5">
+                <div className="p-3 bg-white/10 rounded-2xl border border-white/5 shrink-0">
                    {logoUrl ? (
                      <img src={logoUrl} alt="Logo" className="w-8 h-8 object-contain invert" />
                    ) : (
                      <Store size={24} />
                    )}
                 </div>
-                <div>
-                  <h4 className="text-xl font-black">{name || 'GustoFlow'}</h4>
-                  <p className="text-xs text-slate-400">{slogan || 'Cloud Operations'}</p>
+                <div className="min-w-0">
+                  <h4 className="text-xl font-black truncate">{name || 'GustoFlow'}</h4>
+                  <p className="text-xs text-slate-400 truncate">{slogan || 'Cloud Operations'}</p>
                 </div>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                This is how your restaurant branding will appear across the application for all staff members.
+                Identity synced to this device's cache. {dbError ? 'Cloud sync disabled.' : 'Auto-sync active.'}
               </p>
             </div>
             <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-indigo-500/20 rounded-full blur-[40px]" />
           </div>
 
           <div className="bg-emerald-50 rounded-[32px] p-8 border border-emerald-100">
-             <h4 className="font-bold text-emerald-800 mb-2">Sync Status</h4>
-             <p className="text-sm text-emerald-600 mb-4 font-medium">Your settings are automatically synced to the cloud and reflect on all connected devices in real-time.</p>
+             <h4 className="font-bold text-emerald-800 mb-2 text-sm uppercase">Storage Mode</h4>
+             <p className="text-xs text-emerald-600 mb-4 font-medium">Settings are persisted locally to ensure zero-downtime branding even during sync issues.</p>
              <div className="flex items-center gap-2">
                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-               <span className="text-[10px] font-black uppercase text-emerald-700 tracking-widest">Live Connection Established</span>
+               <span className="text-[10px] font-black uppercase text-emerald-700 tracking-widest">Local First Layer Active</span>
              </div>
           </div>
         </div>

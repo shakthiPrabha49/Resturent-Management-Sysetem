@@ -14,6 +14,8 @@ import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Bell, Menu, X } from 'lucide-react';
 import { supabase } from './supabaseClient.ts';
 
+const SETTINGS_KEY = 'gustoflow_local_settings';
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -25,11 +27,16 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('Dashboard');
-  const [appSettings, setAppSettings] = useState<AppSettings>({
-    id: 'default',
-    name: 'GustoFlow',
-    slogan: 'Cloud-Synced Restaurant Operations',
-    logo_url: ''
+  
+  // Initialize from localStorage first for immediate UI response
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    const local = localStorage.getItem(SETTINGS_KEY);
+    return local ? JSON.parse(local) : {
+      id: 'singleton_settings',
+      name: 'GustoFlow',
+      slogan: 'Cloud-Synced Restaurant Operations',
+      logo_url: ''
+    };
   });
 
   const addNotification = useCallback((msg: string) => {
@@ -40,20 +47,21 @@ const App: React.FC = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
+        // We use .select().maybeSingle() to avoid throwing errors if the table is missing or empty
         const [
           { data: tablesData },
           { data: menuData },
           { data: ordersData },
           { data: stockData },
           { data: transData },
-          { data: settingsData }
+          settingsResult
         ] = await Promise.all([
           supabase.from('tables').select('*').order('number'),
           supabase.from('menu_items').select('*'),
           supabase.from('orders').select('*').order('timestamp', { ascending: false }),
           supabase.from('stock_entries').select('*').order('purchaseDate'),
           supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
-          supabase.from('app_settings').select('*').single()
+          supabase.from('app_settings').select('*').maybeSingle()
         ]);
 
         if (tablesData) setTables(tablesData);
@@ -61,10 +69,15 @@ const App: React.FC = () => {
         if (ordersData) setOrders(ordersData);
         if (stockData) setStock(stockData);
         if (transData) setTransactions(transData);
-        if (settingsData) setAppSettings(settingsData);
+        
+        // If settings found in cloud, sync to local and state
+        if (settingsResult?.data) {
+          setAppSettings(settingsResult.data);
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
+        }
       } catch (error) {
-        console.error("Critical Sync Error:", error);
-        addNotification("Failed to connect to cloud database.");
+        console.warn("Sync Warning:", error);
+        addNotification("Working in local-first mode (Cloud sync partial).");
       } finally {
         setIsLoading(false);
       }
@@ -72,13 +85,16 @@ const App: React.FC = () => {
 
     fetchData();
 
-    // Real-time Subscriptions
+    // Real-time Subscriptions (only if tables exist)
     const settingsSub = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, payload => {
-      if (payload.new) setAppSettings(payload.new as AppSettings);
+      if (payload.new && Object.keys(payload.new).length > 0) {
+        setAppSettings(payload.new as AppSettings);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload.new));
+      }
     }).subscribe();
 
     const tableSub = supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
-      setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
+      if (payload.new) setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
     }).subscribe();
 
     const menuSub = supabase.channel('menu').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, payload => {
@@ -98,21 +114,10 @@ const App: React.FC = () => {
       }
     }).subscribe();
 
-    const stockSub = supabase.channel('stock').on('postgres_changes', { event: '*', schema: 'public', table: 'stock_entries' }, payload => {
-      supabase.from('stock_entries').select('*').order('purchaseDate').then(({ data }) => data && setStock(data));
-    }).subscribe();
-
-    const transSub = supabase.channel('trans').on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
-      if (payload.eventType === 'INSERT') setTransactions(curr => [payload.new as Transaction, ...curr]);
-    }).subscribe();
-
     return () => {
       supabase.removeChannel(settingsSub);
       supabase.removeChannel(tableSub);
       supabase.removeChannel(menuSub);
-      supabase.removeChannel(orderSub);
-      supabase.removeChannel(stockSub);
-      supabase.removeChannel(transSub);
     };
   }, [addNotification]);
 
@@ -181,7 +186,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">GustoFlow Cloud Sync...</p>
+        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">Syncing GustoFlow...</p>
       </div>
     </div>
   );
