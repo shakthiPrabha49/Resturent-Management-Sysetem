@@ -40,7 +40,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users, appSettings }) => {
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-3 bg-indigo-600 rounded-2xl mb-4 shadow-lg shadow-indigo-500/20">
             {appSettings.logo_url ? (
-               <img src={appSettings.logo_url} alt="Logo" className="w-10 h-10 object-contain invert" />
+               <img src={appSettings.logo_url} alt="Logo" className="w-10 h-10 object-contain" />
             ) : (
               <UtensilsCrossed size={40} className="text-white" />
             )}

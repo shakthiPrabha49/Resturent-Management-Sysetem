@@ -66,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
               {appSettings.logo_url ? (
-                <img src={appSettings.logo_url} alt="Logo" className="w-[22px] h-[22px] object-contain invert" />
+                <img src={appSettings.logo_url} alt="Logo" className="w-[22px] h-[22px] object-contain" />
               ) : (
                 <UtensilsCrossed size={22} className="text-white" />
               )}

@@ -223,7 +223,7 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
               <div className="flex items-center gap-4 mb-6">
                 <div className="p-3 bg-white/10 rounded-2xl border border-white/5 shrink-0">
                    {logoUrl ? (
-                     <img src={logoUrl} alt="Logo" className="w-8 h-8 object-contain invert" />
+                     <img src={logoUrl} alt="Logo" className="w-8 h-8 object-contain" />
                    ) : (
                      <Store size={24} />
                    )}
