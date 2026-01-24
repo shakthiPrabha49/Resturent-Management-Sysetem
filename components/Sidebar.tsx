@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { UserRole } from '../types';
+import { UserRole } from '../types.ts';
 import { 
   LayoutDashboard, 
   UtensilsCrossed, 
@@ -8,7 +8,6 @@ import {
   CreditCard, 
   Package, 
   Table as TableIcon, 
-  LogOut,
   Settings
 } from 'lucide-react';
 
@@ -18,7 +17,7 @@ interface SidebarProps {
   userName: string;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ role, onLogout, userName }) => {
+const Sidebar: React.FC<SidebarProps> = ({ role, userName }) => {
   const getNavItems = () => {
     switch (role) {
       case UserRole.OWNER:
@@ -50,39 +49,40 @@ const Sidebar: React.FC<SidebarProps> = ({ role, onLogout, userName }) => {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50">
+    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50 shadow-2xl">
       <div className="p-6">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-indigo-600 rounded-lg">
-            <UtensilsCrossed size={24} />
+        <div className="flex items-center gap-3 mb-10">
+          <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
+            <UtensilsCrossed size={22} className="text-white" />
           </div>
-          <span className="text-xl font-bold tracking-tight">GustoFlow</span>
+          <span className="text-xl font-black tracking-tighter">GustoFlow</span>
         </div>
 
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           {getNavItems().map((item, idx) => (
             <button
               key={idx}
-              className="w-full flex items-center gap-3 px-4 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-all group"
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-xl transition-all group"
             >
-              <item.icon size={20} className="group-hover:scale-110 transition-transform" />
-              <span className="font-medium">{item.label}</span>
+              <item.icon size={18} className="group-hover:scale-110 group-hover:text-indigo-400 transition-all" />
+              <span className="text-sm font-bold tracking-tight">{item.label}</span>
             </button>
           ))}
         </nav>
       </div>
 
-      <div className="mt-auto p-6 border-t border-slate-800 space-y-4">
-        <button className="w-full flex items-center gap-3 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all">
-          <Settings size={20} />
-          <span>Settings</span>
+      <div className="mt-auto p-6 border-t border-slate-800/50 space-y-4">
+        <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-xl transition-all">
+          <Settings size={18} />
+          <span className="text-sm font-bold">Settings</span>
         </button>
-        <div className="flex items-center gap-3 px-4 py-2">
-          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold">
+        <div className="flex items-center gap-3 px-4 py-3 bg-slate-800/30 rounded-2xl border border-slate-700/30">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-xs text-white">
             {userName.charAt(0)}
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium truncate">{userName}</p>
+            <p className="text-xs font-black truncate text-slate-200">{userName}</p>
+            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{role.toLowerCase()}</p>
           </div>
         </div>
       </div>

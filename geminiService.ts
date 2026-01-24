@@ -1,8 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Order, StockEntry, Transaction } from './types';
+import { Order, StockEntry, Transaction } from './types.ts';
 
-// Fixed: Corrected initialization to use exclusively process.env.API_KEY as a named parameter
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 export const getBusinessInsights = async (
@@ -26,7 +25,6 @@ export const getBusinessInsights = async (
       }
     });
 
-    // Fixed: Ensure accessing .text property directly (not calling as a method)
     return response.text;
   } catch (error) {
     console.error("Gemini Error:", error);
@@ -41,7 +39,6 @@ export const generateMenuDescription = async (itemName: string) => {
       contents: `Write a 1-sentence mouth-watering description for a restaurant menu item called "${itemName}".`,
       config: { thinkingConfig: { thinkingBudget: 0 } }
     });
-    // Fixed: Ensure accessing .text property directly
     return response.text;
   } catch (error) {
     return "Deliciously prepared with fresh ingredients.";

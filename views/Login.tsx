@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { User } from '../types';
+import { User } from '../types.ts';
 import { UtensilsCrossed, Lock, User as UserIcon, Loader2 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.ts';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -21,10 +21,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
     setError('');
 
     try {
-      // In this specific implementation, we check against local initial users for demo purposes
-      // while assuming they match Supabase credentials. 
-      // Real implementation would use: await supabase.auth.signInWithPassword({ email: username, password });
-      
       const user = users.find(u => u.username === username.toLowerCase());
       if (user && password.length >= 4) {
         onLogin(user);

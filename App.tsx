@@ -2,16 +2,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus 
-} from './types';
-import { INITIAL_USERS } from './constants';
-import Login from './views/Login';
-import OwnerDashboard from './views/OwnerDashboard';
-import CashierDashboard from './views/CashierDashboard';
-import ChefDashboard from './views/ChefDashboard';
-import WaitressDashboard from './views/WaitressDashboard';
-import Sidebar from './components/Sidebar';
+} from './types.ts';
+import { INITIAL_USERS } from './constants.tsx';
+import Login from './views/Login.tsx';
+import OwnerDashboard from './views/OwnerDashboard.tsx';
+import CashierDashboard from './views/CashierDashboard.tsx';
+import ChefDashboard from './views/ChefDashboard.tsx';
+import WaitressDashboard from './views/WaitressDashboard.tsx';
+import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Bell } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient.ts';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -29,27 +29,33 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      setIsLoading(true);
-      const [
-        { data: tablesData },
-        { data: menuData },
-        { data: ordersData },
-        { data: stockData },
-        { data: transData }
-      ] = await Promise.all([
-        supabase.from('tables').select('*').order('number'),
-        supabase.from('menu_items').select('*'),
-        supabase.from('orders').select('*').order('timestamp', { ascending: false }),
-        supabase.from('stock_entries').select('*').order('purchaseDate'),
-        supabase.from('transactions').select('*').order('timestamp', { ascending: false })
-      ]);
+      try {
+        setIsLoading(true);
+        const [
+          { data: tablesData },
+          { data: menuData },
+          { data: ordersData },
+          { data: stockData },
+          { data: transData }
+        ] = await Promise.all([
+          supabase.from('tables').select('*').order('number'),
+          supabase.from('menu_items').select('*'),
+          supabase.from('orders').select('*').order('timestamp', { ascending: false }),
+          supabase.from('stock_entries').select('*').order('purchaseDate'),
+          supabase.from('transactions').select('*').order('timestamp', { ascending: false })
+        ]);
 
-      if (tablesData) setTables(tablesData);
-      if (menuData) setMenu(menuData);
-      if (ordersData) setOrders(ordersData);
-      if (stockData) setStock(stockData);
-      if (transData) setTransactions(transData);
-      setIsLoading(false);
+        if (tablesData) setTables(tablesData);
+        if (menuData) setMenu(menuData);
+        if (ordersData) setOrders(ordersData);
+        if (stockData) setStock(stockData);
+        if (transData) setTransactions(transData);
+      } catch (error) {
+        console.error("Critical Sync Error:", error);
+        addNotification("Failed to connect to cloud database.");
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     fetchData();
@@ -77,7 +83,6 @@ const App: React.FC = () => {
     }).subscribe();
 
     const stockSub = supabase.channel('stock').on('postgres_changes', { event: '*', schema: 'public', table: 'stock_entries' }, payload => {
-      // Re-fetch or update locally - re-fetching is safer for complex FIFO
       supabase.from('stock_entries').select('*').order('purchaseDate').then(({ data }) => data && setStock(data));
     }).subscribe();
 
@@ -152,11 +157,12 @@ const App: React.FC = () => {
   }, []);
 
   if (!currentUser) return <Login onLogin={handleLogin} users={INITIAL_USERS} />;
+  
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-bold text-slate-500 font-mono tracking-widest">GUSTOFLOW CLOUD SYNC...</p>
+        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">GustoFlow Cloud Sync...</p>
       </div>
     </div>
   );
@@ -167,8 +173,8 @@ const App: React.FC = () => {
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">GustoFlow</h1>
-            <p className="text-xs text-slate-400 font-medium tracking-wide uppercase">{currentUser.role} Control Panel</p>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">GustoFlow</h1>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role} Control Panel</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -185,7 +191,7 @@ const App: React.FC = () => {
                 <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
                 <div className="flex items-center justify-end gap-1">
                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Online</p>
+                   <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Online</p>
                 </div>
               </div>
               <button onClick={() => setCurrentUser(null)} className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
@@ -194,10 +200,12 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
-        {currentUser.role === UserRole.OWNER && <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />}
-        {currentUser.role === UserRole.CASHIER && <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />}
-        {currentUser.role === UserRole.CHEF && <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />}
-        {currentUser.role === UserRole.WAITRESS && <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />}
+        <div className="animate-in fade-in duration-700">
+          {currentUser.role === UserRole.OWNER && <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />}
+          {currentUser.role === UserRole.CASHIER && <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />}
+          {currentUser.role === UserRole.CHEF && <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />}
+          {currentUser.role === UserRole.WAITRESS && <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />}
+        </div>
       </main>
     </div>
   );
