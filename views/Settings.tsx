@@ -19,6 +19,11 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Check file size (e.g., 2MB limit for base64 strings to prevent DB issues)
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Logo file is too large. Please use an image under 2MB.");
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoUrl(reader.result as string);
@@ -29,20 +34,25 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
 
   const saveSettings = async () => {
     setIsSaving(true);
-    const updatedSettings = { ...settings, name, slogan, logo_url: logoUrl };
+    // Use a fixed ID if none exists to ensure we only ever have one settings row
+    const targetId = settings.id === 'default' ? 'singleton_settings' : settings.id;
     
-    // In a real scenario, you'd upsert. Assuming one row exists with id 'default' or similar.
+    // Using upsert instead of update to handle initial creation of the settings row
     const { error } = await supabase
       .from('app_settings')
-      .update({ name, slogan, logo_url: logoUrl })
-      .eq('id', settings.id);
+      .upsert({ 
+        id: targetId,
+        name, 
+        slogan, 
+        logo_url: logoUrl 
+      });
 
     if (!error) {
-      onSave(updatedSettings);
+      onSave({ id: targetId, name, slogan, logo_url: logoUrl });
       alert('Settings updated successfully!');
     } else {
       console.error('Settings save error:', error);
-      alert('Failed to save settings to cloud.');
+      alert(`Failed to save settings: ${error.message}`);
     }
     setIsSaving(false);
   };
