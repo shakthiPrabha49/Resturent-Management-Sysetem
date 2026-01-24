@@ -1,10 +1,24 @@
 
 import React, { useState, useRef } from 'react';
 import { AppSettings } from '../types.ts';
-import { Settings as SettingsIcon, Save, Image as ImageIcon, Store, Star, Loader2, Upload, AlertCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Image as ImageIcon, Store, Star, Loader2, Upload, AlertCircle, Terminal, Copy, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
 
 const SETTINGS_KEY = 'gustoflow_local_settings';
+
+const SETUP_SQL = `-- Run this in your Supabase SQL Editor:
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT 'GustoFlow',
+  slogan TEXT,
+  logo_url TEXT
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE app_settings;
+
+INSERT INTO public.app_settings (id, name, slogan) 
+VALUES ('singleton_settings', 'GustoFlow', 'Cloud-Synced Restaurant Operations') 
+ON CONFLICT DO NOTHING;`;
 
 interface SettingsProps {
   settings: AppSettings;
@@ -17,13 +31,14 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
   const [logoUrl, setLogoUrl] = useState(settings.logo_url);
   const [isSaving, setIsSaving] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1 * 1024 * 1024) {
-        alert("Image is too large for cloud storage (1MB max for base64 strings). Please use a smaller image.");
+        alert("Image is too large for cloud storage (1MB max). Please use a smaller image.");
         return;
       }
       const reader = new FileReader();
@@ -34,6 +49,12 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
     }
   };
 
+  const copySql = () => {
+    navigator.clipboard.writeText(SETUP_SQL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const saveSettings = async () => {
     setIsSaving(true);
     setDbError(null);
@@ -41,11 +62,9 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
     const targetId = settings.id || 'singleton_settings';
     const updatedSettings = { id: targetId, name, slogan, logo_url: logoUrl };
 
-    // 1. Save to localStorage immediately for instant update
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(updatedSettings));
     onSave(updatedSettings);
 
-    // 2. Attempt push to Cloud
     try {
       const { error } = await supabase
         .from('app_settings')
@@ -56,7 +75,7 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
       } else {
         console.error('Database Error:', error);
         if (error.message.includes("Could not find the table")) {
-          setDbError("Table 'app_settings' missing in Supabase. Branding saved to this browser only.");
+          setDbError("Table 'app_settings' missing in Supabase.");
         } else {
           setDbError(error.message);
         }
@@ -75,29 +94,43 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Settings</h2>
           <p className="text-slate-500 font-medium">Manage your restaurant identity and branding</p>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <button
-            onClick={saveSettings}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-            {isSaving ? 'Saving...' : 'Save Branding'}
-          </button>
-        </div>
+        <button
+          onClick={saveSettings}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 disabled:opacity-50"
+        >
+          {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+          {isSaving ? 'Saving...' : 'Save Branding'}
+        </button>
       </div>
 
       {dbError && (
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex gap-3 text-amber-800">
-          <AlertCircle className="shrink-0" size={20} />
-          <div>
-            <p className="font-bold text-sm">Cloud Sync Warning</p>
-            <p className="text-xs opacity-80">{dbError}</p>
-            <p className="text-[10px] mt-2 font-mono bg-white/50 p-2 rounded border border-amber-100">
-              To fix cloud sync, run this SQL in Supabase:<br/>
-              create table app_settings (id text primary key, name text, slogan text, logo_url text);
-            </p>
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-[32px] shadow-2xl overflow-hidden relative group">
+          <div className="flex items-start gap-4 relative z-10">
+            <div className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl">
+              <Terminal size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-black text-white tracking-tight">Cloud Setup Required</h3>
+                  <p className="text-slate-400 text-sm mt-1">Run the script below in your Supabase SQL Editor to enable branding sync.</p>
+                </div>
+                <button 
+                  onClick={copySql}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  {copied ? 'Copied!' : 'Copy SQL'}
+                </button>
+              </div>
+              
+              <div className="mt-6 bg-black/40 p-5 rounded-2xl font-mono text-[11px] text-indigo-300 border border-white/5 overflow-x-auto whitespace-pre">
+                {SETUP_SQL}
+              </div>
+            </div>
           </div>
+          <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px]" />
         </div>
       )}
 
@@ -118,7 +151,7 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 transition-all"
                   placeholder="GustoFlow"
                 />
               </div>
@@ -129,7 +162,7 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
                   type="text"
                   value={slogan}
                   onChange={(e) => setSlogan(e.target.value)}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 transition-all"
                   placeholder="Premium Restaurant Experience"
                 />
               </div>
@@ -201,18 +234,18 @@ const SettingsView: React.FC<SettingsProps> = ({ settings, onSave }) => {
                 </div>
               </div>
               <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                Identity synced to this device's cache. {dbError ? 'Cloud sync disabled.' : 'Auto-sync active.'}
+                {dbError ? 'Branding is currently stored only in this browser cache.' : 'Branding is synced with cloud and all staff devices.'}
               </p>
             </div>
             <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-indigo-500/20 rounded-full blur-[40px]" />
           </div>
 
           <div className="bg-emerald-50 rounded-[32px] p-8 border border-emerald-100">
-             <h4 className="font-bold text-emerald-800 mb-2 text-sm uppercase">Storage Mode</h4>
+             <h4 className="font-bold text-emerald-800 mb-2 text-sm uppercase">Cloud-Local Engine</h4>
              <p className="text-xs text-emerald-600 mb-4 font-medium">Settings are persisted locally to ensure zero-downtime branding even during sync issues.</p>
              <div className="flex items-center gap-2">
                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-               <span className="text-[10px] font-black uppercase text-emerald-700 tracking-widest">Local First Layer Active</span>
+               <span className="text-[10px] font-black uppercase text-emerald-700 tracking-widest">Active Connection Mode</span>
              </div>
           </div>
         </div>
