@@ -10,7 +10,7 @@ import CashierDashboard from './views/CashierDashboard.tsx';
 import ChefDashboard from './views/ChefDashboard.tsx';
 import WaitressDashboard from './views/WaitressDashboard.tsx';
 import Sidebar from './components/Sidebar.tsx';
-import { LogOut, Bell } from 'lucide-react';
+import { LogOut, Bell, Menu, X } from 'lucide-react';
 import { supabase } from './supabaseClient.ts';
 
 const App: React.FC = () => {
@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [notifications, setNotifications] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const addNotification = useCallback((msg: string) => {
     setNotifications(prev => [msg, ...prev].slice(0, 5));
@@ -102,6 +103,8 @@ const App: React.FC = () => {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     addNotification(`Welcome back, ${user.name}!`);
+    // Close sidebar on mobile after login if it was somehow open
+    setIsSidebarOpen(false);
   };
 
   const updateTableStatus = useCallback(async (tableId: string, status: TableStatus) => {
@@ -168,15 +171,34 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar role={currentUser.role} onLogout={() => setCurrentUser(null)} userName={currentUser.name} />
-      <main className="flex-1 ml-64 p-8 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">GustoFlow</h1>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role} Control Panel</p>
-          </div>
+    <div className="flex min-h-screen bg-slate-50 relative overflow-x-hidden">
+      {/* Sidebar with toggle state */}
+      <Sidebar 
+        role={currentUser.role} 
+        onLogout={() => setCurrentUser(null)} 
+        userName={currentUser.name} 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)}
+      />
+      
+      {/* Main Content Area */}
+      <main className={`flex-1 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'ml-0'} p-4 md:p-8 overflow-y-auto w-full`}>
+        <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-100 sticky top-0 z-30">
           <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all"
+              aria-label="Toggle Sidebar"
+            >
+              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <div className="hidden sm:block">
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">GustoFlow</h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role} Control Panel</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 md:gap-4">
             <div className="relative">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
                 <Bell size={20} className="text-slate-600" />
@@ -185,9 +207,9 @@ const App: React.FC = () => {
                 )}
               </button>
             </div>
-            <div className="h-8 w-[1px] bg-slate-100" />
+            <div className="h-8 w-[1px] bg-slate-100 hidden sm:block" />
             <div className="flex items-center gap-3">
-              <div className="text-right">
+              <div className="text-right hidden md:block">
                 <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
                 <div className="flex items-center justify-end gap-1">
                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
@@ -200,6 +222,7 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
+
         <div className="animate-in fade-in duration-700">
           {currentUser.role === UserRole.OWNER && <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />}
           {currentUser.role === UserRole.CASHIER && <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />}
@@ -207,6 +230,14 @@ const App: React.FC = () => {
           {currentUser.role === UserRole.WAITRESS && <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />}
         </div>
       </main>
+
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 };

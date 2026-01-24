@@ -8,16 +8,19 @@ import {
   CreditCard, 
   Package, 
   Table as TableIcon, 
-  Settings
+  Settings,
+  X
 } from 'lucide-react';
 
 interface SidebarProps {
   role: UserRole;
   onLogout: () => void;
   userName: string;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ role, userName }) => {
+const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose }) => {
   const getNavItems = () => {
     switch (role) {
       case UserRole.OWNER:
@@ -49,19 +52,28 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName }) => {
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50 shadow-2xl">
+    <aside className={`fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50 shadow-2xl transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="p-6">
-        <div className="flex items-center gap-3 mb-10">
-          <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
-            <UtensilsCrossed size={22} className="text-white" />
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
+              <UtensilsCrossed size={22} className="text-white" />
+            </div>
+            <span className="text-xl font-black tracking-tighter">GustoFlow</span>
           </div>
-          <span className="text-xl font-black tracking-tighter">GustoFlow</span>
+          <button 
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white lg:hidden"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="space-y-1.5">
           {getNavItems().map((item, idx) => (
             <button
               key={idx}
+              onClick={onClose}
               className="w-full flex items-center gap-3 px-4 py-3.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-xl transition-all group"
             >
               <item.icon size={18} className="group-hover:scale-110 group-hover:text-indigo-400 transition-all" />
