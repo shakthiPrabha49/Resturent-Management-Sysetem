@@ -30,6 +30,13 @@ export interface User {
   name: string;
 }
 
+export interface AppSettings {
+  id: string;
+  name: string;
+  slogan: string;
+  logo_url: string;
+}
+
 export interface MenuItem {
   id: string;
   name: string;

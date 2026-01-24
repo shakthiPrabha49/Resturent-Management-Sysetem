@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus 
+  User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus, AppSettings 
 } from './types.ts';
 import { INITIAL_USERS } from './constants.tsx';
 import Login from './views/Login.tsx';
@@ -9,6 +9,7 @@ import OwnerDashboard from './views/OwnerDashboard.tsx';
 import CashierDashboard from './views/CashierDashboard.tsx';
 import ChefDashboard from './views/ChefDashboard.tsx';
 import WaitressDashboard from './views/WaitressDashboard.tsx';
+import SettingsView from './views/Settings.tsx';
 import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Bell, Menu, X } from 'lucide-react';
 import { supabase } from './supabaseClient.ts';
@@ -23,6 +24,13 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<string>('Dashboard');
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    id: 'default',
+    name: 'GustoFlow',
+    slogan: 'Cloud-Synced Restaurant Operations',
+    logo_url: ''
+  });
 
   const addNotification = useCallback((msg: string) => {
     setNotifications(prev => [msg, ...prev].slice(0, 5));
@@ -37,13 +45,15 @@ const App: React.FC = () => {
           { data: menuData },
           { data: ordersData },
           { data: stockData },
-          { data: transData }
+          { data: transData },
+          { data: settingsData }
         ] = await Promise.all([
           supabase.from('tables').select('*').order('number'),
           supabase.from('menu_items').select('*'),
           supabase.from('orders').select('*').order('timestamp', { ascending: false }),
           supabase.from('stock_entries').select('*').order('purchaseDate'),
-          supabase.from('transactions').select('*').order('timestamp', { ascending: false })
+          supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
+          supabase.from('app_settings').select('*').single()
         ]);
 
         if (tablesData) setTables(tablesData);
@@ -51,6 +61,7 @@ const App: React.FC = () => {
         if (ordersData) setOrders(ordersData);
         if (stockData) setStock(stockData);
         if (transData) setTransactions(transData);
+        if (settingsData) setAppSettings(settingsData);
       } catch (error) {
         console.error("Critical Sync Error:", error);
         addNotification("Failed to connect to cloud database.");
@@ -62,6 +73,10 @@ const App: React.FC = () => {
     fetchData();
 
     // Real-time Subscriptions
+    const settingsSub = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, payload => {
+      if (payload.new) setAppSettings(payload.new as AppSettings);
+    }).subscribe();
+
     const tableSub = supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
       setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
     }).subscribe();
@@ -92,6 +107,7 @@ const App: React.FC = () => {
     }).subscribe();
 
     return () => {
+      supabase.removeChannel(settingsSub);
       supabase.removeChannel(tableSub);
       supabase.removeChannel(menuSub);
       supabase.removeChannel(orderSub);
@@ -103,8 +119,8 @@ const App: React.FC = () => {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     addNotification(`Welcome back, ${user.name}!`);
-    // Close sidebar on mobile after login if it was somehow open
     setIsSidebarOpen(false);
+    setCurrentView('Dashboard');
   };
 
   const updateTableStatus = useCallback(async (tableId: string, status: TableStatus) => {
@@ -159,7 +175,7 @@ const App: React.FC = () => {
     await supabase.from('transactions').insert(newTransaction);
   }, []);
 
-  if (!currentUser) return <Login onLogin={handleLogin} users={INITIAL_USERS} />;
+  if (!currentUser) return <Login onLogin={handleLogin} users={INITIAL_USERS} appSettings={appSettings} />;
   
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -170,18 +186,38 @@ const App: React.FC = () => {
     </div>
   );
 
+  const renderView = () => {
+    if (currentView === 'Settings' && currentUser.role === UserRole.OWNER) {
+      return <SettingsView settings={appSettings} onSave={setAppSettings} />;
+    }
+
+    switch (currentUser.role) {
+      case UserRole.OWNER:
+        return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />;
+      case UserRole.CASHIER:
+        return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />;
+      case UserRole.CHEF:
+        return <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />;
+      case UserRole.WAITRESS:
+        return <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50 relative overflow-x-hidden">
-      {/* Sidebar with toggle state */}
       <Sidebar 
         role={currentUser.role} 
         onLogout={() => setCurrentUser(null)} 
         userName={currentUser.name} 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)}
+        onViewChange={setCurrentView}
+        activeView={currentView}
+        appSettings={appSettings}
       />
       
-      {/* Main Content Area */}
       <main className={`flex-1 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'lg:ml-64' : 'ml-0'} p-4 md:p-8 overflow-y-auto w-full`}>
         <header className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-100 sticky top-0 z-30">
           <div className="flex items-center gap-4">
@@ -193,8 +229,8 @@ const App: React.FC = () => {
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <div className="hidden sm:block">
-              <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">GustoFlow</h1>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role} Control Panel</p>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">{appSettings.name}</h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role === UserRole.OWNER && currentView === 'Settings' ? 'Application Configuration' : `${currentUser.role} Control Panel`}</p>
             </div>
           </div>
 
@@ -224,14 +260,10 @@ const App: React.FC = () => {
         </header>
 
         <div className="animate-in fade-in duration-700">
-          {currentUser.role === UserRole.OWNER && <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />}
-          {currentUser.role === UserRole.CASHIER && <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />}
-          {currentUser.role === UserRole.CHEF && <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />}
-          {currentUser.role === UserRole.WAITRESS && <WaitressDashboard tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />}
+          {renderView()}
         </div>
       </main>
 
-      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"

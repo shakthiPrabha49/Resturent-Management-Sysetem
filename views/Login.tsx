@@ -1,15 +1,15 @@
 
 import React, { useState } from 'react';
-import { User } from '../types.ts';
+import { User, AppSettings } from '../types.ts';
 import { UtensilsCrossed, Lock, User as UserIcon, Loader2 } from 'lucide-react';
-import { supabase } from '../supabaseClient.ts';
 
 interface LoginProps {
   onLogin: (user: User) => void;
   users: User[];
+  appSettings: AppSettings;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, users, appSettings }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,10 +39,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center p-3 bg-indigo-600 rounded-2xl mb-4 shadow-lg shadow-indigo-500/20">
-            <UtensilsCrossed size={40} className="text-white" />
+            {appSettings.logo_url ? (
+               <img src={appSettings.logo_url} alt="Logo" className="w-10 h-10 object-contain invert" />
+            ) : (
+              <UtensilsCrossed size={40} className="text-white" />
+            )}
           </div>
-          <h1 className="text-4xl font-extrabold text-white tracking-tight mb-2">GustoFlow</h1>
-          <p className="text-slate-400 font-medium">Cloud-Synced Restaurant Operations</p>
+          <h1 className="text-4xl font-extrabold text-white tracking-tight mb-2">{appSettings.name}</h1>
+          <p className="text-slate-400 font-medium">{appSettings.slogan}</p>
         </div>
 
         <div className="bg-white rounded-3xl p-8 shadow-2xl">
