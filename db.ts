@@ -7,12 +7,21 @@ export const db = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, table, ...options })
       });
-      if (!response.ok) throw new Error(await response.text());
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Server error: ${response.status}`);
+      }
+      
       return await response.json();
-    } catch (err) {
-      console.error(`DB Error (${action} ${table}):`, err);
-      return null;
+    } catch (err: any) {
+      // Re-throw so the UI can catch and display the specific error
+      throw err;
     }
+  },
+
+  async checkConnection() {
+    return await this.query("CHECK_BINDING", null);
   },
 
   async execute(sql: string) {

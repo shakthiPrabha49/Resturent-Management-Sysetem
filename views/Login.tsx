@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User, UserRole, AppSettings } from '../types.ts';
-import { UtensilsCrossed, Lock, User as UserIcon, Loader2, Database, CheckCircle, AlertCircle } from 'lucide-react';
+import { UtensilsCrossed, Lock, User as UserIcon, Loader2, Database, CheckCircle, AlertCircle, Info, RefreshCcw } from 'lucide-react';
 import { db } from '../db.ts';
 import { INITIAL_USERS, INITIAL_TABLES, INITIAL_MENU } from '../constants.tsx';
 
@@ -18,6 +18,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
   const [error, setError] = useState('');
   const [showSetup, setShowSetup] = useState(false);
   const [setupStatus, setSetupStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [setupLogs, setSetupLogs] = useState<string[]>([]);
+
+  const addLog = (msg: string) => setSetupLogs(prev => [...prev.slice(-4), msg]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,11 +42,24 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           setError('Password must be at least 4 characters.');
         }
       } else {
-        setError('Username not found. Please click "System Setup" below to initialize the database.');
+        setError('User not found. Ensure the database is initialized.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Connection failed. Ensure Cloudflare D1 is bound to your project.');
+      setError(err.message || 'Connection failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkConnection = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await db.checkConnection();
+      alert("Success: " + res.message);
+    } catch (err: any) {
+      setError("Connection Error: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -52,8 +68,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
   const initializeDatabase = async () => {
     setInitializing(true);
     setSetupStatus('idle');
+    setSetupLogs([]);
     try {
-      // 1. Create Tables
+      addLog("Checking environment...");
+      await db.checkConnection();
+
+      addLog("Creating tables...");
       await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, name TEXT, username TEXT, role TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT)`);
@@ -62,13 +82,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER)`);
 
-      // 2. Check if already seeded
+      addLog("Checking if seed needed...");
       const existing = await db.from('staff').maybeSingle("username = 'owner'");
+      
       if (!existing) {
-        // 3. Seed Staff
+        addLog("Seeding staff accounts...");
         await db.from('staff').insert(INITIAL_USERS);
         
-        // 4. Seed Settings
+        addLog("Seeding settings...");
         await db.from('app_settings').insert([{
           id: 'singleton_settings',
           name: 'GustoFlow',
@@ -76,18 +97,19 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           logo_url: ''
         }]);
 
-        // 5. Seed Tables
+        addLog("Seeding tables and menu...");
         await db.from('tables').insert(INITIAL_TABLES);
-
-        // 6. Seed Menu
         await db.from('menu_items').insert(INITIAL_MENU);
+      } else {
+        addLog("Database already has data.");
       }
 
+      addLog("Initialization complete!");
       setSetupStatus('success');
-      setTimeout(() => setShowSetup(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Initialization Error:", err);
       setSetupStatus('error');
+      setError("Setup Failed: " + err.message);
     } finally {
       setInitializing(false);
     }
@@ -123,7 +145,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 placeholder:font-medium"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300"
                   placeholder="e.g. owner"
                   required
                 />
@@ -138,7 +160,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 placeholder:font-medium"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300"
                   placeholder="••••"
                   required
                 />
@@ -146,34 +168,63 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-4 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-in fade-in slide-in-from-top-1">
-                <AlertCircle size={16} />
-                <p className="text-xs font-bold">{error}</p>
+              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-in fade-in slide-in-from-top-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  <p className="text-xs font-bold">Error</p>
+                </div>
+                <p className="text-[10px] font-medium leading-relaxed">{error}</p>
+                {error.includes('binding') && (
+                   <p className="text-[9px] bg-rose-600 text-white p-2 rounded-lg font-bold">
+                     Go to Pages > Settings > Functions > D1 Database Bindings. Add 'DB' as the variable name.
+                   </p>
+                )}
               </div>
             )}
 
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center py-5 bg-indigo-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-70 disabled:pointer-events-none uppercase tracking-widest text-sm"
-            >
-              {loading ? <Loader2 className="animate-spin mr-2" size={20} /> : 'Enter Workspace'}
-            </button>
+            <div className="flex gap-2">
+              <button 
+                type="submit"
+                disabled={loading}
+                className="flex-1 flex items-center justify-center py-5 bg-indigo-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-70 uppercase tracking-widest text-sm"
+              >
+                {loading ? <Loader2 className="animate-spin mr-2" size={20} /> : 'Login'}
+              </button>
+              <button 
+                type="button"
+                onClick={checkConnection}
+                className="p-5 bg-slate-100 text-slate-500 rounded-[1.5rem] hover:bg-slate-200 transition-all"
+                title="Test Connection"
+              >
+                <RefreshCcw size={20} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </form>
           
           <div className="mt-8 pt-8 border-t border-slate-50 flex flex-col items-center">
             <button 
               onClick={() => setShowSetup(!showSetup)}
-              className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-500 transition-colors"
+              className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-500 transition-colors flex items-center gap-2"
             >
-              System Setup & Debug
+              <Database size={12} />
+              First Time Setup
             </button>
 
             {showSetup && (
               <div className="mt-6 w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 animate-in zoom-in-95">
-                <p className="text-[10px] font-bold text-slate-500 mb-4 text-center leading-relaxed">
-                  First time? Initialize your Cloudflare D1 database schema and seed default staff and menu data.
-                </p>
+                <div className="flex items-start gap-3 mb-4">
+                  <Info size={16} className="text-indigo-500 mt-1 shrink-0" />
+                  <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                    This will create the necessary tables in your D1 database. Ensure you have bound your D1 database with the name <strong>DB</strong> in Cloudflare settings.
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border mb-4 max-h-32 overflow-y-auto font-mono text-[9px] text-slate-400">
+                  {setupLogs.length === 0 ? "Ready..." : setupLogs.map((log, i) => (
+                    <div key={i} className="mb-1">{">"} {log}</div>
+                  ))}
+                </div>
+
                 <button 
                   onClick={initializeDatabase}
                   disabled={initializing}
@@ -184,21 +235,15 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   {initializing ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : setupStatus === 'success' ? (
-                    <><CheckCircle size={14} /> System Initialized</>
+                    <><CheckCircle size={14} /> Ready!</>
                   ) : (
-                    <><Database size={14} /> Full System Init</>
+                    <><Database size={14} /> Start Setup</>
                   )}
                 </button>
-                {setupStatus === 'error' && (
-                  <p className="text-[9px] text-rose-500 mt-2 font-bold text-center">Failed. Ensure DB binding 'DB' exists in Pages settings.</p>
-                )}
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                   <div className="p-2 bg-white rounded-lg border border-slate-100 text-[8px] font-bold text-slate-400">
-                      USER: <span className="text-slate-700">owner</span>
-                   </div>
-                   <div className="p-2 bg-white rounded-lg border border-slate-100 text-[8px] font-bold text-slate-400">
-                      PASS: <span className="text-slate-700">1234</span>
-                   </div>
+                
+                <div className="mt-4 flex gap-2 justify-center">
+                   <div className="px-2 py-1 bg-white rounded border text-[8px] font-bold text-slate-400">USER: owner</div>
+                   <div className="px-2 py-1 bg-white rounded border text-[8px] font-bold text-slate-400">PASS: 1234</div>
                 </div>
               </div>
             )}
