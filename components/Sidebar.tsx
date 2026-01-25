@@ -47,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
       case UserRole.WAITRESS:
         return [
           { icon: TableIcon, label: 'Table Layout', view: 'Dashboard' },
-          { icon: ClipboardList, label: 'My Orders', view: 'Dashboard' },
+          { icon: ClipboardList, label: 'My Orders', view: 'MyOrders' },
         ];
       default:
         return [];

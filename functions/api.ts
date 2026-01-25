@@ -1,9 +1,10 @@
 
+// Fix: Use 'any' for D1Database and PagesFunction as they are provided by the Cloudflare Pages environment at runtime but not found during compilation.
 interface Env {
-  DB: D1Database;
+  DB: any;
 }
 
-export const onRequest: PagesFunction<Env> = async (context) => {
+export const onRequest: any = async (context: any) => {
   const { request, env } = context;
   
   if (request.method === "OPTIONS") {

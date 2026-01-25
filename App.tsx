@@ -8,6 +8,7 @@ import OwnerDashboard from './views/OwnerDashboard.tsx';
 import CashierDashboard from './views/CashierDashboard.tsx';
 import ChefDashboard from './views/ChefDashboard.tsx';
 import WaitressDashboard from './views/WaitressDashboard.tsx';
+import WaitressOrdersView from './views/WaitressOrdersView.tsx';
 import SettingsView from './views/Settings.tsx';
 import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Menu, X } from 'lucide-react';
@@ -78,7 +79,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    // Use Polling for Cloudflare D1 to simulate real-time
     pollInterval.current = setInterval(fetchData, 5000);
     return () => clearInterval(pollInterval.current);
   }, []);
@@ -93,7 +93,7 @@ const App: React.FC = () => {
     const updateData: any = { status };
     if (waitressName !== undefined) updateData.waitress_name = waitressName;
     await db.from('tables').update(updateData).eq('id', tableId);
-    fetchData(); // Immediate refresh after update
+    fetchData();
   }, []);
 
   const processPayment = useCallback(async (orderId: string, amount: number) => {
@@ -150,6 +150,9 @@ const App: React.FC = () => {
       case UserRole.CHEF:
         return <ChefDashboard orders={orders} updateTableStatus={updateTableStatus} />;
       case UserRole.WAITRESS:
+        if (currentView === 'MyOrders') {
+          return <WaitressOrdersView currentUser={currentUser} orders={orders} />;
+        }
         return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
       default:
         return null;
@@ -177,7 +180,9 @@ const App: React.FC = () => {
             </button>
             <div className="hidden sm:block">
               <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">{appSettings.name}</h1>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{currentUser.role === UserRole.OWNER && currentView === 'Settings' ? 'Application Configuration' : `${currentUser.role} Control Panel`}</p>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                {currentView === 'MyOrders' ? 'My Performance' : (currentUser.role === UserRole.OWNER && currentView === 'Settings' ? 'Application Configuration' : `${currentUser.role} Control Panel`)}
+              </p>
             </div>
           </div>
 
