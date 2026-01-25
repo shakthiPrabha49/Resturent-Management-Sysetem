@@ -28,7 +28,6 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('Dashboard');
   
-  // Initialize from localStorage first for immediate UI response
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const local = localStorage.getItem(SETTINGS_KEY);
     return local ? JSON.parse(local) : {
@@ -47,7 +46,6 @@ const App: React.FC = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        // We use .select().maybeSingle() to avoid throwing errors if the table is missing or empty
         const [
           { data: tablesData },
           { data: menuData },
@@ -70,7 +68,6 @@ const App: React.FC = () => {
         if (stockData) setStock(stockData);
         if (transData) setTransactions(transData);
         
-        // If settings found in cloud, sync to local and state
         if (settingsResult?.data) {
           setAppSettings(settingsResult.data);
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
@@ -85,7 +82,6 @@ const App: React.FC = () => {
 
     fetchData();
 
-    // Real-time Subscriptions (only if tables exist)
     const settingsSub = supabase.channel('settings').on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, payload => {
       if (payload.new && Object.keys(payload.new).length > 0) {
         setAppSettings(payload.new as AppSettings);
@@ -108,7 +104,6 @@ const App: React.FC = () => {
     const orderSub = supabase.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
       if (payload.eventType === 'INSERT') {
         setOrders(curr => [payload.new as Order, ...curr]);
-        addNotification(`New order for Table ${payload.new.tableNumber}`);
       } else if (payload.eventType === 'UPDATE') {
         setOrders(curr => curr.map(o => o.id === payload.new.id ? payload.new as Order : o));
       }
@@ -118,6 +113,7 @@ const App: React.FC = () => {
       supabase.removeChannel(settingsSub);
       supabase.removeChannel(tableSub);
       supabase.removeChannel(menuSub);
+      supabase.removeChannel(orderSub);
     };
   }, [addNotification]);
 
@@ -147,8 +143,7 @@ const App: React.FC = () => {
       }
       remaining -= toDeduct;
     }
-    if (remaining > 0) addNotification(`Warning: ${itemName} is depleted!`);
-  }, [stock, addNotification]);
+  }, [stock]);
 
   const processPayment = useCallback(async (orderId: string, amount: number) => {
     const order = orders.find(o => o.id === orderId);
@@ -157,7 +152,7 @@ const App: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       type: 'IN',
       amount,
-      description: `Payment for Table ${order.tableNumber}`,
+      description: `Payment Table T-${order.tableNumber}`,
       timestamp: Date.now(),
       category: 'Sales'
     };
@@ -200,7 +195,7 @@ const App: React.FC = () => {
       case UserRole.OWNER:
         return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />;
       case UserRole.CASHIER:
-        return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} />;
+        return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} tables={tables} />;
       case UserRole.CHEF:
         return <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={deductStock} updateTableStatus={updateTableStatus} />;
       case UserRole.WAITRESS:
@@ -229,7 +224,6 @@ const App: React.FC = () => {
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all"
-              aria-label="Toggle Sidebar"
             >
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>

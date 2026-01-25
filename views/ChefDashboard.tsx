@@ -85,7 +85,7 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
                 <div key={order.id} className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-xl hover:shadow-indigo-500/5 transition-all">
                   <div className="flex justify-between items-start mb-6">
                     <div>
-                      <h3 className="text-lg font-black text-slate-800 tracking-tight">Table {order.tableNumber}</h3>
+                      <h3 className="text-lg font-black text-slate-800 tracking-tight">Table T-{order.tableNumber}</h3>
                       <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                         <Timer size={12} />
                         In {Math.floor((Date.now() - order.timestamp) / 60000)}m

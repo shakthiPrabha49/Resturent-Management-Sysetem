@@ -1,24 +1,37 @@
 
-import React, { useState } from 'react';
-import { Order, OrderStatus, Transaction } from '../types.ts';
-import { CreditCard, History, Printer, CheckCircle, Wallet, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Order, OrderStatus, Transaction, Table, TableStatus } from '../types.ts';
+import { CreditCard, History, Printer, CheckCircle, Wallet, ArrowUpCircle, ArrowDownCircle, DollarSign, Loader2 } from 'lucide-react';
+import { supabase } from '../supabaseClient.ts';
 
 interface CashierDashboardProps {
   orders: Order[];
   processPayment: (orderId: string, amount: number) => void;
   transactions: Transaction[];
   addExpense: (amount: number, description: string) => void;
+  tables: Table[];
 }
 
 const CashierDashboard: React.FC<CashierDashboardProps> = ({ 
-  orders, processPayment, transactions, addExpense 
+  orders, processPayment, transactions, addExpense, tables 
 }) => {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDesc, setExpenseDesc] = useState('');
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
-  const completedOrders = orders.filter(o => o.status === OrderStatus.SERVED || o.status === OrderStatus.READY);
-  const todaysSales = transactions.filter(t => t.type === 'IN').reduce((acc, t) => acc + t.amount, 0);
-  const todaysExpenses = transactions.filter(t => t.type === 'OUT').reduce((acc, t) => acc + t.amount, 0);
+  const finalizedBills = useMemo(() => {
+    const completedTableIds = tables
+      .filter(t => t.status === TableStatus.COMPLETED)
+      .map(t => t.id);
+    
+    return orders.filter(o => 
+      completedTableIds.includes(o.tableId) && 
+      o.status !== OrderStatus.PAID
+    );
+  }, [orders, tables]);
+
+  const todaysSales = transactions.filter(t => t.type === 'IN').reduce((acc, t) => acc + Number(t.amount), 0);
+  const todaysExpenses = transactions.filter(t => t.type === 'OUT').reduce((acc, t) => acc + Number(t.amount), 0);
   const netBalance = todaysSales - todaysExpenses;
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
@@ -29,57 +42,75 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
     setExpenseDesc('');
   };
 
+  const handlePay = async (order: Order) => {
+    setIsProcessing(order.id);
+    await processPayment(order.id, order.total * 1.05);
+    setIsProcessing(null);
+  };
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-      {/* Active Bills Section */}
       <div className="xl:col-span-8 space-y-6">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <CreditCard size={22} className="text-indigo-600" />
-          Pending Bills
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <CreditCard size={22} className="text-indigo-600" />
+            Final Bills (Ready to Pay)
+          </h2>
+          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100">
+            {finalizedBills.length} TABLES WAITING
+          </span>
+        </div>
 
-        {completedOrders.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 text-center border-2 border-dashed border-slate-200">
-            <p className="text-slate-500 font-medium">No completed orders ready for billing.</p>
+        {finalizedBills.length === 0 ? (
+          <div className="bg-white rounded-[40px] p-20 text-center border-2 border-dashed border-slate-100">
+            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <DollarSign size={32} className="text-slate-300" />
+            </div>
+            <p className="text-slate-500 font-bold text-lg">No finalized bills yet.</p>
+            <p className="text-slate-400 text-sm mt-1">Wait for waitress to mark a table as 'Done'.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {completedOrders.map(order => (
-              <div key={order.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                <div className="flex justify-between mb-4">
-                  <h3 className="text-lg font-bold">Table {order.tableNumber}</h3>
-                  <span className="text-slate-400 text-sm font-medium">#{order.id.slice(0,5)}</span>
+            {finalizedBills.map(order => (
+              <div key={order.id} className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 flex flex-col hover:shadow-2xl hover:shadow-indigo-500/5 transition-all">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Table T-{order.tableNumber}</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Order #{order.id.slice(0,5)}</p>
+                  </div>
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <Printer size={20} />
+                  </div>
                 </div>
                 
-                <div className="space-y-2 mb-6 border-y border-slate-50 py-4">
+                <div className="space-y-3 mb-8 border-y border-slate-50 py-6 max-h-48 overflow-y-auto custom-scrollbar">
                   {order.items.map((item, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-slate-600">x{item.quantity} {item.name}</span>
-                      <span className="font-semibold text-slate-800">${(item.price * item.quantity).toFixed(2)}</span>
+                    <div key={i} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 flex items-center justify-center bg-slate-100 rounded text-[10px] font-black text-slate-500">{item.quantity}</span>
+                        <span className="font-bold text-slate-700">{item.name}</span>
+                      </div>
+                      <span className="font-black text-slate-900">${(Number(item.price) * item.quantity).toFixed(2)}</span>
                     </div>
                   ))}
-                  <div className="flex justify-between text-sm text-slate-400 pt-2">
-                    <span>Service Charge (5%)</span>
-                    <span>${(order.total * 0.05).toFixed(2)}</span>
+                  <div className="flex justify-between text-[11px] text-slate-400 font-bold uppercase tracking-widest pt-4">
+                    <span>Service (5%)</span>
+                    <span>${(Number(order.total) * 0.05).toFixed(2)}</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center mb-6">
-                  <span className="text-lg font-bold text-slate-800">Total</span>
-                  <span className="text-2xl font-black text-indigo-600">${(order.total * 1.05).toFixed(2)}</span>
-                </div>
+                <div className="mt-auto">
+                  <div className="flex justify-between items-end mb-8">
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total Amount</span>
+                    <span className="text-4xl font-black text-indigo-600 leading-none">${(Number(order.total) * 1.05).toFixed(2)}</span>
+                  </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="flex items-center justify-center gap-2 py-3 border-2 border-slate-100 rounded-xl text-slate-500 font-bold hover:bg-slate-50">
-                    <Printer size={18} />
-                    Print
-                  </button>
                   <button 
-                    onClick={() => processPayment(order.id, order.total * 1.05)}
-                    className="flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all"
+                    onClick={() => handlePay(order)}
+                    disabled={isProcessing === order.id}
+                    className="w-full flex items-center justify-center gap-3 py-5 bg-emerald-600 text-white font-black rounded-2xl shadow-xl shadow-emerald-600/30 hover:bg-emerald-700 transition-all uppercase tracking-widest text-xs disabled:opacity-50"
                   >
-                    <CheckCircle size={18} />
-                    Pay
+                    {isProcessing === order.id ? <Loader2 size={18} className="animate-spin" /> : <><CheckCircle size={18} /> Confirm Payment</>}
                   </button>
                 </div>
               </div>
@@ -87,109 +118,112 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
           </div>
         )}
 
-        <h2 className="text-xl font-bold flex items-center gap-2 pt-4">
-          <History size={22} className="text-slate-600" />
-          Recent Transactions
-        </h2>
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Time</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {transactions.slice(-5).reverse().map(t => (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-slate-500">
-                    {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-semibold text-slate-800">{t.description}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      t.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                    }`}>
-                      {t.type}
-                    </span>
-                  </td>
-                  <td className={`px-6 py-4 text-sm font-bold text-right ${t.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {t.type === 'IN' ? '+' : '-'}${t.amount.toFixed(2)}
-                  </td>
+        <div className="pt-8">
+          <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
+            <History size={22} className="text-slate-600" />
+            Recent Log
+          </h2>
+          <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50/50 border-b border-slate-100">
+                <tr>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Detail</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sum</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {transactions.slice(0, 10).map(t => (
+                  <tr key={t.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-8 py-4 text-xs font-bold text-slate-400">
+                      {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-8 py-4">
+                      <p className="text-sm font-bold text-slate-800">{t.description}</p>
+                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${t.type === 'IN' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                        {t.type === 'IN' ? 'Sale' : 'Expense'}
+                      </span>
+                    </td>
+                    <td className={`px-8 py-4 text-sm font-black text-right ${t.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {t.type === 'IN' ? '+' : '-'}${Number(t.amount).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      {/* Cash Flow Sidebar */}
       <div className="xl:col-span-4 space-y-8">
-        <div className="bg-indigo-900 rounded-3xl p-8 text-white shadow-xl shadow-indigo-900/20 relative overflow-hidden">
+        <div className="bg-slate-900 rounded-[40px] p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="relative z-10">
-            <p className="text-indigo-200 text-sm font-bold uppercase tracking-widest mb-2">Net Balance Today</p>
-            <h3 className="text-5xl font-black mb-6">${netBalance.toFixed(2)}</h3>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-2">Net Cash (Today)</p>
+            <h3 className="text-5xl font-black mb-10 tracking-tighter">${netBalance.toFixed(2)}</h3>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/10 p-3 rounded-2xl">
-                <div className="flex items-center gap-2 mb-1">
-                  <ArrowUpCircle size={16} className="text-emerald-400" />
-                  <span className="text-xs text-indigo-100 font-medium">Income</span>
+            <div className="space-y-4">
+              <div className="bg-white/5 p-5 rounded-3xl border border-white/5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpCircle size={14} className="text-emerald-400" />
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Inflow</span>
+                  </div>
+                  <p className="text-lg font-black text-emerald-400">${todaysSales.toFixed(2)}</p>
                 </div>
-                <p className="text-lg font-bold">${todaysSales.toFixed(2)}</p>
               </div>
-              <div className="bg-white/10 p-3 rounded-2xl">
-                <div className="flex items-center gap-2 mb-1">
-                  <ArrowDownCircle size={16} className="text-rose-400" />
-                  <span className="text-xs text-indigo-100 font-medium">Expenses</span>
+              <div className="bg-white/5 p-5 rounded-3xl border border-white/5">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <ArrowDownCircle size={14} className="text-rose-400" />
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Outflow</span>
+                  </div>
+                  <p className="text-lg font-black text-rose-400">${todaysExpenses.toFixed(2)}</p>
                 </div>
-                <p className="text-lg font-bold">${todaysExpenses.toFixed(2)}</p>
               </div>
             </div>
           </div>
-          <div className="absolute top-[-20%] right-[-20%] w-64 h-64 bg-indigo-500 rounded-full blur-[80px] opacity-30" />
+          <div className="absolute top-[-20%] right-[-20%] w-64 h-64 bg-indigo-500 rounded-full blur-[100px] opacity-20" />
         </div>
 
-        {/* Expense Form */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold flex items-center gap-2 mb-6">
-            <Wallet size={20} className="text-rose-600" />
-            Quick Expense
+        <div className="bg-white rounded-[40px] p-8 shadow-sm border border-slate-100">
+          <h3 className="text-lg font-black flex items-center gap-3 mb-8 text-slate-800">
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <Wallet size={18} />
+            </div>
+            Expense Entry
           </h3>
-          <form onSubmit={handleExpenseSubmit} className="space-y-4">
+          <form onSubmit={handleExpenseSubmit} className="space-y-6">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Amount ($)</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Amount ($)</label>
               <div className="relative">
-                <DollarSign size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <DollarSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                 <input 
                   type="number"
                   step="0.01"
                   value={expenseAmount}
                   onChange={(e) => setExpenseAmount(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 transition-all outline-none"
+                  className="w-full pl-10 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/10 transition-all outline-none font-bold text-slate-700"
                   placeholder="0.00"
                   required
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Reason / Description</label>
               <textarea 
                 value={expenseDesc}
                 onChange={(e) => setExpenseDesc(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 transition-all outline-none resize-none"
-                placeholder="e.g. Fresh Tomatoes for Kitchen"
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/10 transition-all outline-none resize-none font-bold text-slate-700 text-sm"
+                placeholder="e.g. Daily market purchase"
                 rows={3}
                 required
               />
             </div>
             <button 
               type="submit"
-              className="w-full py-4 bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-600/20 hover:bg-rose-700 transition-all"
+              className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-xl shadow-slate-900/10 hover:bg-black transition-all uppercase tracking-[0.2em] text-xs"
             >
-              Log Expense
+              Post Expense
             </button>
           </form>
         </div>

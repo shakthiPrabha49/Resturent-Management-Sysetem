@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem } from '../types.ts';
-import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, Hash } from 'lucide-react';
+import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, CheckCircle2, Loader2, X } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
 
 interface WaitressDashboardProps {
@@ -21,28 +21,21 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const activeOrderForSelected = useMemo(() => {
+    if (!selectedTable) return null;
+    return orders.find(o => o.tableId === selectedTable.id && o.status !== OrderStatus.PAID);
+  }, [selectedTable, orders]);
+
   const filteredMenu = useMemo(() => {
     if (!searchQuery.trim()) return menu;
-
     const query = searchQuery.toLowerCase();
     return [...menu].filter(item => {
       const nameMatch = item.name.toLowerCase().includes(query);
       const numberMatch = item.item_number?.toLowerCase().includes(query);
-      const categoryMatch = item.category.toLowerCase().includes(query);
-      return nameMatch || numberMatch || categoryMatch;
+      return nameMatch || numberMatch;
     }).sort((a, b) => {
-      // Prioritize exact number matches
-      const aNum = a.item_number?.toLowerCase() || '';
-      const bNum = b.item_number?.toLowerCase() || '';
-      if (aNum === query) return -1;
-      if (bNum === query) return 1;
-      
-      // Then prioritize items that start with the query
-      const aName = a.name.toLowerCase();
-      const bName = b.name.toLowerCase();
-      if (aName.startsWith(query) && !bName.startsWith(query)) return -1;
-      if (!aName.startsWith(query) && bName.startsWith(query)) return 1;
-      
+      if (a.item_number === query) return -1;
+      if (b.item_number === query) return 1;
       return 0;
     });
   }, [menu, searchQuery]);
@@ -71,103 +64,130 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     if (!selectedTable || cart.length === 0) return;
     setIsSubmitting(true);
 
-    const total = cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
-    const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 9),
-      tableId: selectedTable.id,
-      tableNumber: selectedTable.number,
-      items: cart,
-      status: OrderStatus.PENDING,
-      timestamp: Date.now(),
-      total
-    };
+    const cartTotal = cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
 
-    const { error } = await supabase.from('orders').insert(newOrder);
-    
-    if (!error) {
-      await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
-      addNotification(`Order sent for Table ${selectedTable.number}`);
-      setCart([]);
-      setSelectedTable(null);
-      setSearchQuery('');
+    if (activeOrderForSelected) {
+      // Append to existing order items array
+      const updatedItems = [...activeOrderForSelected.items, ...cart];
+      const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
+      
+      const { error } = await supabase
+        .from('orders')
+        .update({ 
+          items: updatedItems, 
+          total: updatedTotal, 
+          status: OrderStatus.PENDING 
+        })
+        .eq('id', activeOrderForSelected.id);
+
+      if (!error) {
+        await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
+        addNotification(`Items added to Table T-${selectedTable.number}`);
+      }
     } else {
-      console.error("Submission error:", error);
+      // Create a brand new order for the session
+      const newOrder: Order = {
+        id: Math.random().toString(36).substr(2, 9),
+        tableId: selectedTable.id,
+        tableNumber: selectedTable.number,
+        items: cart,
+        status: OrderStatus.PENDING,
+        timestamp: Date.now(),
+        total: cartTotal
+      };
+      const { error } = await supabase.from('orders').insert(newOrder);
+      if (!error) {
+        await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
+        addNotification(`New bill started for Table T-${selectedTable.number}`);
+      }
     }
+
+    setCart([]);
+    setSelectedTable(null);
+    setSearchQuery('');
     setIsSubmitting(false);
   };
 
-  const markServed = async (order: Order) => {
-    await supabase.from('orders').update({ status: OrderStatus.SERVED }).eq('id', order.id);
-    await updateTableStatus(order.tableId, TableStatus.SERVED);
-    addNotification(`Table ${order.tableNumber} served.`);
-  };
+  const finishTable = async (table: Table) => {
+    const order = orders.find(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
+    if (!order) return;
 
-  const markDone = async (order: Order) => {
-    await updateTableStatus(order.tableId, TableStatus.COMPLETED);
-    addNotification(`Table ${order.tableNumber} completed. Ready for billing.`);
+    setIsSubmitting(true);
+    // Mark table as COMPLETED to signal the cashier
+    const { error } = await supabase
+      .from('tables')
+      .update({ status: TableStatus.COMPLETED })
+      .eq('id', table.id);
+
+    if (!error) {
+      addNotification(`Table T-${table.number} finalized. Bill sent to cashier.`);
+      setSelectedTable(null);
+    }
+    setIsSubmitting(false);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-6">
-        <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
-          <Users size={20} className="text-indigo-600" />
-          Floor Layout
-        </h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+            <Users size={20} className="text-indigo-600" />
+            Floor Layout
+          </h2>
+        </div>
+        
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {tables.map(table => {
-            const activeOrder = orders.find(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
+            const hasOrder = orders.some(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
+            const isSelected = selectedTable?.id === table.id;
             
             return (
               <button
                 key={table.id}
-                onClick={() => table.status === TableStatus.AVAILABLE && setSelectedTable(table)}
-                disabled={table.status !== TableStatus.AVAILABLE && !activeOrder}
-                className={`p-4 rounded-2xl border-2 transition-all text-left relative overflow-hidden group ${
-                  selectedTable?.id === table.id 
-                    ? 'border-indigo-600 bg-indigo-50 shadow-md ring-4 ring-indigo-50' 
+                onClick={() => setSelectedTable(table)}
+                className={`p-5 rounded-[28px] border-2 transition-all text-left relative overflow-hidden group ${
+                  isSelected 
+                    ? 'border-indigo-600 bg-indigo-50 shadow-xl ring-4 ring-indigo-50' 
                     : table.status === TableStatus.AVAILABLE 
-                      ? 'border-slate-200 bg-white hover:border-indigo-300' 
-                      : 'border-amber-100 bg-amber-50 cursor-default'
+                      ? 'border-slate-100 bg-white hover:border-indigo-200' 
+                      : table.status === TableStatus.COMPLETED
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-amber-100 bg-amber-50/50'
                 }`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`text-lg font-bold ${table.status === TableStatus.AVAILABLE ? 'text-slate-800' : 'text-amber-700'}`}>
+                <div className="flex justify-between items-start mb-4">
+                  <span className={`text-xl font-black ${table.status === TableStatus.AVAILABLE ? 'text-slate-800' : 'text-slate-900'}`}>
                     T-{table.number}
                   </span>
-                  <div className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                    table.status === TableStatus.AVAILABLE ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-200 text-amber-800'
+                  <div className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                    table.status === TableStatus.AVAILABLE ? 'bg-slate-100 text-slate-500' : 
+                    table.status === TableStatus.COMPLETED ? 'bg-emerald-500 text-white' : 'bg-amber-200 text-amber-800'
                   }`}>
                     {table.status}
                   </div>
                 </div>
-                
-                {activeOrder ? (
-                  <div className="space-y-2 mt-2">
-                    <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold uppercase tracking-tighter">
-                      <Clock size={12} />
-                      {Math.floor((Date.now() - activeOrder.timestamp) / 60000)}m
+
+                {hasOrder && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
+                      <Clock size={12} className="text-indigo-500" />
+                      In Progress
                     </div>
-                    {activeOrder.status === OrderStatus.READY && (
+                    {table.status !== TableStatus.COMPLETED && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); markServed(activeOrder); }}
-                        className="w-full py-2 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-700 transition-all shadow-sm"
+                        onClick={(e) => { e.stopPropagation(); finishTable(table); }}
+                        className="w-full py-2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-black transition-all shadow-lg"
                       >
-                        Serve Now
-                      </button>
-                    )}
-                    {activeOrder.status === OrderStatus.SERVED && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); markDone(activeOrder); }}
-                        className="w-full py-2 bg-slate-800 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-900 transition-all shadow-sm"
-                      >
-                        Done
+                        Done / Bill
                       </button>
                     )}
                   </div>
-                ) : (
-                  <div className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                    Take Order
+                )}
+                
+                {!hasOrder && (
+                  <div className="mt-6 flex items-center gap-2 text-[10px] text-indigo-600 font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus size={12} />
+                    Open Order
                   </div>
                 )}
               </button>
@@ -176,130 +196,112 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 flex flex-col min-h-[600px] overflow-hidden">
+      <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 flex flex-col min-h-[600px] overflow-hidden">
         {selectedTable ? (
           <div className="flex flex-col h-full">
-            <div className="p-6 border-b border-slate-50">
-              <div className="flex justify-between items-center mb-4">
+            <div className="p-8 border-b border-slate-50 bg-slate-50/30">
+              <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-black text-slate-800 tracking-tight">Table {selectedTable.number}</h3>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Order Creation</p>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Table T-{selectedTable.number}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {activeOrderForSelected ? 'Adding more items' : 'New Table Order'}
+                    </p>
+                  </div>
                 </div>
                 <button 
                   onClick={() => { setSelectedTable(null); setCart([]); }}
-                  className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-all"
+                  className="p-3 hover:bg-white rounded-2xl text-slate-400 hover:text-slate-600 transition-all border border-transparent hover:border-slate-100"
                 >
                   <X size={20} />
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input 
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name or number (e.g. 05)..."
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-sm transition-all"
+                  placeholder="Search item name or code..."
+                  className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[22px] focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm transition-all shadow-sm"
                   autoFocus
                 />
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
-              {filteredMenu.length > 0 ? (
-                filteredMenu.map(item => (
-                  <div key={item.id} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-500/5 transition-all group">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 text-[10px] font-black shrink-0 border border-indigo-100">
-                        {item.item_number || '??'}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-800 text-sm truncate">{item.name}</p>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">${item.price.toFixed(2)}</p>
-                      </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-white">
+              {filteredMenu.map(item => (
+                <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-3xl border border-slate-100 hover:border-indigo-100 hover:bg-white transition-all group">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-lg shadow-indigo-200">
+                      {item.item_number || '??'}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => removeFromCart(item.id)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-xl transition-all ${
-                          cart.find(i => i.menuItemId === item.id) 
-                            ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' 
-                            : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                        }`}
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span className="w-6 text-center font-black text-sm text-slate-700">
-                        {cart.find(i => i.menuItemId === item.id)?.quantity || 0}
-                      </span>
-                      <button 
-                        onClick={() => addToCart(item)}
-                        className="w-8 h-8 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all"
-                      >
-                        <Plus size={14} />
-                      </button>
+                    <div>
+                      <p className="font-black text-slate-800 text-sm">{item.name}</p>
+                      <p className="text-[10px] font-bold text-indigo-500 tracking-wider">${item.price.toFixed(2)}</p>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-10 opacity-50">
-                  <p className="text-sm font-bold text-slate-400">No items found</p>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => removeFromCart(item.id)}
+                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${
+                        cart.find(i => i.menuItemId === item.id) 
+                          ? 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' 
+                          : 'opacity-20 cursor-not-allowed'
+                      }`}
+                    >
+                      <Minus size={16} />
+                    </button>
+                    <span className="w-5 text-center font-black text-sm text-slate-900">
+                      {cart.find(i => i.menuItemId === item.id)?.quantity || 0}
+                    </span>
+                    <button 
+                      onClick={() => addToCart(item)}
+                      className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
 
-            <div className="p-6 border-t border-slate-100 bg-slate-50/50">
-              <div className="flex justify-between items-center mb-4">
+            <div className="p-8 border-t border-slate-100 bg-slate-50/50">
+              <div className="flex justify-between items-center mb-6 px-2">
                 <div className="flex items-center gap-2">
-                  <ShoppingBag size={18} className="text-slate-400" />
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Subtotal</span>
+                  <ShoppingBag size={20} className="text-indigo-600" />
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Total</span>
                 </div>
-                <span className="text-2xl font-black text-slate-900">
+                <span className="text-3xl font-black text-slate-900">
                   ${cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
                 </span>
               </div>
+              
               <button 
                 onClick={submitOrder}
                 disabled={cart.length === 0 || isSubmitting}
-                className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-widest text-sm"
+                className="w-full py-5 bg-indigo-600 text-white font-black rounded-[24px] shadow-2xl shadow-indigo-600/30 flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
               >
-                {isSubmitting ? (
-                  <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  <>
-                    <Send size={18} />
-                    Place Order
-                  </>
-                )}
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Send to Kitchen</>}
               </button>
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-slate-50/30">
-            <div className="w-20 h-20 bg-white shadow-xl shadow-slate-200/50 rounded-[32px] flex items-center justify-center text-slate-200 mb-6 border border-slate-50">
-              <ShoppingBag size={36} />
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-12 space-y-6">
+            <div className="w-24 h-24 bg-indigo-50 rounded-[40px] flex items-center justify-center text-indigo-200 border border-indigo-100/50">
+              <ShoppingBag size={48} />
             </div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight">Select a Table</h3>
-            <p className="text-sm text-slate-400 mt-2 font-medium max-w-[200px]">Choose an available table from the layout to start a new order.</p>
+            <div>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Select a Table</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Choose a table from the floor to start ordering or add to an existing bill.</p>
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 };
-
-const X = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"></line>
-    <line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
-
-const Loader2 = ({ className, size }: { className?: string, size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-  </svg>
-);
 
 export default WaitressDashboard;
