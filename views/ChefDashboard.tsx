@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Order, OrderStatus, TableStatus, StockEntry } from '../types.ts';
 import { ChefHat, ClipboardCheck, Package, CheckCircle2, Loader2, Clock } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
+import { playSound, SOUNDS } from '../utils/audio.ts';
 
 interface ChefDashboardProps {
   orders: Order[];
@@ -13,10 +14,25 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
   orders, updateTableStatus 
 }) => {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const prevOrdersCount = useRef(0);
+  const isFirstRender = useRef(true);
+
   const activeOrders = orders.filter(o => 
     [OrderStatus.PENDING, OrderStatus.COOKING, OrderStatus.READY].includes(o.status) && 
     o.status !== OrderStatus.PAID
   );
+
+  // Monitor for new pending orders to play the kitchen bell sound
+  useEffect(() => {
+    const pendingCount = orders.filter(o => o.status === OrderStatus.PENDING).length;
+    
+    if (!isFirstRender.current && pendingCount > prevOrdersCount.current) {
+      playSound(SOUNDS.KITCHEN_BELL);
+    }
+    
+    prevOrdersCount.current = pendingCount;
+    isFirstRender.current = false;
+  }, [orders]);
 
   const handleUpdateItemStatus = async (order: Order, menuItemId: string, status: 'Cooking' | 'Completed') => {
     setUpdatingId(`${order.id}-${menuItemId}`);

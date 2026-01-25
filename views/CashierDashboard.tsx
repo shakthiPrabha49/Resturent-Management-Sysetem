@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Order, OrderStatus, Transaction, Table, TableStatus } from '../types.ts';
 import { CreditCard, History, Printer, CheckCircle, Wallet, ArrowUpCircle, ArrowDownCircle, DollarSign, Loader2 } from 'lucide-react';
+import { playSound, SOUNDS } from '../utils/audio.ts';
 
 interface CashierDashboardProps {
   orders: Order[];
@@ -17,6 +18,9 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDesc, setExpenseDesc] = useState('');
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
+  
+  const prevBillsCount = useRef(0);
+  const isFirstRender = useRef(true);
 
   const finalizedBills = useMemo(() => {
     const completedTableIds = tables
@@ -28,6 +32,15 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
       o.status !== OrderStatus.PAID
     );
   }, [orders, tables]);
+
+  // Monitor for new finalized bills to play the register sound
+  useEffect(() => {
+    if (!isFirstRender.current && finalizedBills.length > prevBillsCount.current) {
+      playSound(SOUNDS.CASH_REGISTER);
+    }
+    prevBillsCount.current = finalizedBills.length;
+    isFirstRender.current = false;
+  }, [finalizedBills]);
 
   const todaysSales = transactions.filter(t => t.type === 'IN').reduce((acc, t) => acc + Number(t.amount), 0);
   const todaysExpenses = transactions.filter(t => t.type === 'OUT').reduce((acc, t) => acc + Number(t.amount), 0);

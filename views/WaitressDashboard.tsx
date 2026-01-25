@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User } from '../types.ts';
 import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, Loader2, X, Lock, Bell, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
+import { playSound, SOUNDS } from '../utils/audio.ts';
 
 interface WaitressDashboardProps {
   currentUser: User;
@@ -28,8 +29,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeNotifications, setActiveNotifications] = useState<ChefNotification[]>([]);
   
-  // Ref to track previous table statuses to detect changes
   const prevTableStatuses = useRef<Record<string, TableStatus>>({});
+  const isFirstRender = useRef(true);
 
   // Monitor tables for "READY" status changes
   useEffect(() => {
@@ -38,24 +39,24 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       
       // If table just became READY and belongs to this waitress
       if (
+        !isFirstRender.current &&
         table.status === TableStatus.READY && 
         prevStatus !== TableStatus.READY && 
         table.waitress_name === currentUser.name
       ) {
+        playSound(SOUNDS.ORDER_READY);
         const newNotif: ChefNotification = {
           id: Math.random().toString(36).substr(2, 9),
           tableNumber: table.number,
           message: `Table T-${table.number} cooking finished!`
         };
         setActiveNotifications(prev => [...prev, newNotif]);
-        
-        // Also log to console/app-wide notifications
         addNotification(`T-${table.number} is READY`);
       }
       
-      // Update ref for next run
       prevTableStatuses.current[table.id] = table.status;
     });
+    isFirstRender.current = false;
   }, [tables, currentUser.name, addNotification]);
 
   const dismissNotification = (id: string) => {
@@ -134,6 +135,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
       }
       
+      playSound(SOUNDS.SEND_ORDER);
       setCart([]);
       setSelectedTable(null);
       setSearchQuery('');
@@ -164,7 +166,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   return (
     <div className="relative">
-      {/* Real-time Chef Notifications */}
       <div className="fixed top-24 right-8 z-[100] space-y-4 pointer-events-none w-80">
         {activeNotifications.map(notif => (
           <div 
