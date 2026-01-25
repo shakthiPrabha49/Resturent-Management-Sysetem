@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User, UserRole, AppSettings } from '../types.ts';
 import { UtensilsCrossed, Lock, User as UserIcon, Loader2 } from 'lucide-react';
-import { supabase } from '../supabaseClient.ts';
+import { db } from '../db.ts';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -21,14 +21,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setError('');
 
     try {
-      // Fetch staff member from dynamic database table
-      const { data: staff, error: dbError } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('username', username.toLowerCase())
-        .maybeSingle();
-
-      if (dbError) throw dbError;
+      const staff = await db.from('staff').maybeSingle("username = ?", [username.toLowerCase()]);
 
       if (staff && password.length >= 4) {
         onLogin({
@@ -41,7 +34,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
         setError('Invalid credentials. Check with your manager.');
       }
     } catch (err) {
-      setError('Connection failed. Check your Supabase configuration.');
+      setError('Connection failed. Check your Cloudflare D1 configuration.');
     } finally {
       setLoading(false);
     }
@@ -73,7 +66,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
-                  placeholder="e.g. elena"
+                  placeholder="e.g. owner"
                   required
                 />
               </div>
@@ -106,7 +99,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           </form>
           
           <p className="mt-8 text-center text-xs text-slate-400 font-medium">
-            Contact Owner to add or rename staff accounts.
+            Contact manager to add staff accounts to Cloudflare D1.
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus, AppSettings 
 } from './types.ts';
@@ -11,7 +11,7 @@ import WaitressDashboard from './views/WaitressDashboard.tsx';
 import SettingsView from './views/Settings.tsx';
 import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Menu, X } from 'lucide-react';
-import { supabase } from './supabaseClient.ts';
+import { db } from './db.ts';
 
 const SETTINGS_KEY = 'gustoflow_local_settings';
 
@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('Dashboard');
+  const pollInterval = useRef<any>(null);
   
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const local = localStorage.getItem(SETTINGS_KEY);
@@ -42,35 +43,34 @@ const App: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
       const [
-        { data: tablesData },
-        { data: menuData },
-        { data: ordersData },
-        { data: stockData },
-        { data: transData },
-        settingsResult
+        tablesData,
+        menuData,
+        ordersData,
+        stockData,
+        transData,
+        settingsData
       ] = await Promise.all([
-        supabase.from('tables').select('*').order('number'),
-        supabase.from('menu_items').select('*'),
-        supabase.from('orders').select('*').order('timestamp', { ascending: false }),
-        supabase.from('stock_entries').select('*').order('purchase_date'),
-        supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
-        supabase.from('app_settings').select('*').maybeSingle()
+        db.from('tables').select('ORDER BY number'),
+        db.from('menu_items').select(),
+        db.from('orders').select('ORDER BY timestamp DESC'),
+        db.from('stock_entries').select('ORDER BY purchase_date'),
+        db.from('transactions').select('ORDER BY timestamp DESC'),
+        db.from('app_settings').maybeSingle("id = 'singleton_settings'")
       ]);
 
       if (tablesData) setTables(tablesData);
-      if (menuData) setMenu(menuData);
-      if (ordersData) setOrders(ordersData);
+      if (menuData) setMenu(menuData.map((m: any) => ({ ...m, is_available: m.is_available === 1 })));
+      if (ordersData) setOrders(ordersData.map((o: any) => ({ ...o, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items })));
       if (stockData) setStock(stockData);
       if (transData) setTransactions(transData);
       
-      if (settingsResult?.data) {
-        setAppSettings(settingsResult.data);
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
+      if (settingsData) {
+        setAppSettings(settingsData);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsData));
       }
     } catch (error) {
-      console.error("Initial Sync Error:", error);
+      console.error("D1 Sync Error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -78,26 +78,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-
-    const channels = [
-      supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
-        if (payload.eventType === 'UPDATE') {
-          setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
-        } else {
-          fetchData();
-        }
-      }).subscribe(),
-      supabase.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
-        if (payload.eventType === 'INSERT') setOrders(curr => [payload.new as Order, ...curr]);
-        else if (payload.eventType === 'UPDATE') setOrders(curr => curr.map(o => o.id === payload.new.id ? payload.new as Order : o));
-        else fetchData();
-      }).subscribe(),
-      supabase.channel('menu').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, payload => {
-        fetchData();
-      }).subscribe()
-    ];
-
-    return () => { channels.forEach(c => supabase.removeChannel(c)); };
+    // Use Polling for Cloudflare D1 to simulate real-time
+    pollInterval.current = setInterval(fetchData, 5000);
+    return () => clearInterval(pollInterval.current);
   }, []);
 
   const handleLogin = (user: User) => {
@@ -107,18 +90,10 @@ const App: React.FC = () => {
   };
 
   const updateTableStatus = useCallback(async (tableId: string, status: TableStatus, waitressName?: string | null) => {
-    console.log(`Updating Table ${tableId} to ${status}`);
     const updateData: any = { status };
     if (waitressName !== undefined) updateData.waitress_name = waitressName;
-    
-    const { error } = await supabase.from('tables').update(updateData).eq('id', tableId);
-    if (error) {
-      console.error("Table Update DB Error:", error);
-      alert(`Database Error Updating Table: ${error.message}`);
-    } else {
-      // Optimistic update
-      setTables(curr => curr.map(t => t.id === tableId ? { ...t, ...updateData } : t));
-    }
+    await db.from('tables').update(updateData).eq('id', tableId);
+    fetchData(); // Immediate refresh after update
   }, []);
 
   const processPayment = useCallback(async (orderId: string, amount: number) => {
@@ -133,10 +108,8 @@ const App: React.FC = () => {
       category: 'Sales'
     };
     
-    const { error: txError } = await supabase.from('transactions').insert(newTransaction);
-    if (txError) return alert("Payment processing failed.");
-
-    await supabase.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId);
+    await db.from('transactions').insert([newTransaction]);
+    await db.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId);
     await updateTableStatus(order.table_id, TableStatus.AVAILABLE, null);
   }, [orders, updateTableStatus]);
 
@@ -149,7 +122,8 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       category: 'Expense'
     };
-    await supabase.from('transactions').insert(newTransaction);
+    await db.from('transactions').insert([newTransaction]);
+    fetchData();
   }, []);
 
   if (!currentUser) return <Login onLogin={handleLogin} appSettings={appSettings} />;
@@ -158,7 +132,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">Connecting to GustoFlow...</p>
+        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">Syncing Cloud Database...</p>
       </div>
     </div>
   );
@@ -170,7 +144,7 @@ const App: React.FC = () => {
 
     switch (currentUser.role) {
       case UserRole.OWNER:
-        return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />;
+        return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={() => {}} />;
       case UserRole.CASHIER:
         return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} tables={tables} />;
       case UserRole.CHEF:
@@ -212,7 +186,7 @@ const App: React.FC = () => {
               <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
               <div className="flex items-center justify-end gap-1">
                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Live Sync Active</p>
+                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">D1 Cloud Active</p>
               </div>
             </div>
             <button onClick={() => setCurrentUser(null)} className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-all">

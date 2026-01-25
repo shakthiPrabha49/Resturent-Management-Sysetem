@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Order, Transaction, StockEntry, MenuItem } from '../types.ts';
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, BarChart, Bar, YAxis } from 'recharts';
 import { TrendingUp, Users, DollarSign, Package, Sparkles, Edit2, Check, Loader2, Hash } from 'lucide-react';
 import { getBusinessInsights } from '../geminiService.ts';
-import { supabase } from '../supabaseClient.ts';
+import { db } from '../db.ts';
 
 interface OwnerDashboardProps {
   orders: Order[];
@@ -30,7 +29,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
 
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
     setUpdatingMenuId(id);
-    await supabase.from('menu_items').update({ is_available: !currentStatus }).eq('id', id);
+    await db.from('menu_items').update({ is_available: currentStatus ? 0 : 1 }).eq('id', id);
     setUpdatingMenuId(null);
   };
 
@@ -38,17 +37,9 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
     const newNum = editingItemNumbers[id];
     if (newNum === undefined) return;
     setUpdatingMenuId(id);
-    await supabase.from('menu_items').update({ item_number: newNum }).eq('id', id);
+    await db.from('menu_items').update({ item_number: newNum }).eq('id', id);
     setUpdatingMenuId(null);
   };
-
-  const salesData = transactions
-    .filter(t => t.type === 'IN')
-    .slice(0, 10)
-    .map(t => ({ 
-      time: new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-      amount: t.amount 
-    }));
 
   const totalRevenue = transactions.filter(t => t.type === 'IN').reduce((acc, t) => acc + Number(t.amount), 0);
 
