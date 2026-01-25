@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Order, OrderStatus, TableStatus, StockEntry } from '../types.ts';
-import { ChefHat, ClipboardCheck, Package, CheckCircle2, Loader2, Clock } from 'lucide-react';
-import { supabase } from '../supabaseClient.ts';
+import { Order, OrderStatus, TableStatus } from '../types.ts';
+import { ChefHat, ClipboardCheck, CheckCircle2, Loader2, Clock } from 'lucide-react';
+import { db } from '../db.ts';
 import { playSound, SOUNDS } from '../utils/audio.ts';
 
 interface ChefDashboardProps {
@@ -54,12 +54,12 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
       await updateTableStatus(order.table_id, TableStatus.READY);
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update({ items: updatedItems, status: newOrderStatus })
-      .eq('id', order.id);
-
-    if (error) console.error("Chef update error:", error);
+    try {
+      await db.from('orders').update({ items: updatedItems, status: newOrderStatus }).eq('id', order.id);
+    } catch (err) {
+      console.error("Chef update error:", err);
+    }
+    
     setUpdatingId(null);
   };
 

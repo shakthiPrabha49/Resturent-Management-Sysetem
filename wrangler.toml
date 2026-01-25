@@ -6,4 +6,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "gustoflow-db"
-database_id = "your-database-id-goes-here" # Replace with your actual D1 Database ID
+database_id = "2898e41d-86db-472b-bd7d-998d95bc8b17"
