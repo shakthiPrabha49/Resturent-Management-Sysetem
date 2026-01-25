@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus, AppSettings 
@@ -26,6 +25,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('Dashboard');
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const pollInterval = useRef<any>(null);
   
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
@@ -87,6 +87,15 @@ const App: React.FC = () => {
     setCurrentUser(user);
     setIsSidebarOpen(false);
     setCurrentView('Dashboard');
+    setSelectedTable(null);
+  };
+
+  const handleViewChange = (view: string) => {
+    setCurrentView(view);
+    // When navigating to Main Floor (Dashboard), reset selected table floor plan
+    if (view === 'Dashboard') {
+      setSelectedTable(null);
+    }
   };
 
   const updateTableStatus = useCallback(async (tableId: string, status: TableStatus, waitressName?: string | null) => {
@@ -153,7 +162,18 @@ const App: React.FC = () => {
         if (currentView === 'MyOrders') {
           return <WaitressOrdersView currentUser={currentUser} orders={orders} />;
         }
-        return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
+        return (
+          <WaitressDashboard 
+            currentUser={currentUser} 
+            tables={tables} 
+            menu={menu} 
+            orders={orders} 
+            updateTableStatus={updateTableStatus} 
+            addNotification={addNotification}
+            selectedTable={selectedTable}
+            setSelectedTable={setSelectedTable}
+          />
+        );
       default:
         return null;
     }
@@ -167,7 +187,7 @@ const App: React.FC = () => {
         userName={currentUser.name} 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)}
-        onViewChange={setCurrentView}
+        onViewChange={handleViewChange}
         activeView={currentView}
         appSettings={appSettings}
       />
@@ -180,7 +200,7 @@ const App: React.FC = () => {
             </button>
             <div className="hidden sm:block">
               <h1 className="text-xl md:text-2xl font-bold text-slate-800 tracking-tight">{appSettings.name}</h1>
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                 {currentView === 'MyOrders' ? 'My Performance' : (currentUser.role === UserRole.OWNER && currentView === 'Settings' ? 'Application Configuration' : `${currentUser.role} Control Panel`)}
               </p>
             </div>
@@ -191,7 +211,7 @@ const App: React.FC = () => {
               <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
               <div className="flex items-center justify-end gap-1">
                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">D1 Cloud Active</p>
+                 <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">D1 Cloud Active</p>
               </div>
             </div>
             <button onClick={() => setCurrentUser(null)} className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
