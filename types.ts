@@ -1,4 +1,3 @@
-
 export enum UserRole {
   OWNER = 'OWNER',
   CASHIER = 'CASHIER',
@@ -87,4 +86,12 @@ export interface Transaction {
   description: string;
   timestamp: number;
   category: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  id_number?: string;
+  created_at: number;
 }

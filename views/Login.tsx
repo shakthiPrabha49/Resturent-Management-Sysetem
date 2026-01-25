@@ -75,6 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, id_number TEXT, created_at INTEGER);`);
 
       addLog("Seeding Users...");
       for (const u of INITIAL_USERS) {

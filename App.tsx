@@ -8,6 +8,7 @@ import CashierDashboard from './views/CashierDashboard.tsx';
 import ChefDashboard from './views/ChefDashboard.tsx';
 import WaitressDashboard from './views/WaitressDashboard.tsx';
 import WaitressOrdersView from './views/WaitressOrdersView.tsx';
+import CustomerDataView from './views/CustomerData.tsx';
 import SettingsView from './views/Settings.tsx';
 import Sidebar from './components/Sidebar.tsx';
 import { LogOut, Menu, X } from 'lucide-react';
@@ -149,6 +150,10 @@ const App: React.FC = () => {
   const renderView = () => {
     if (currentView === 'Settings' && currentUser.role === UserRole.OWNER) {
       return <SettingsView settings={appSettings} onSave={setAppSettings} />;
+    }
+
+    if (currentView === 'CustomerData') {
+      return <CustomerDataView currentUser={currentUser} />;
     }
 
     switch (currentUser.role) {
