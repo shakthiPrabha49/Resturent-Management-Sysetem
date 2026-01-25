@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Order, Transaction, StockEntry, MenuItem } from '../types.ts';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { TrendingUp, Users, DollarSign, Package, Sparkles, Plus, Edit2, Check, Loader2 } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, Package, Sparkles, Plus, Edit2, Check, Loader2, Hash } from 'lucide-react';
 import { getBusinessInsights } from '../geminiService.ts';
 import { supabase } from '../supabaseClient.ts';
 
@@ -18,6 +18,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
   const [aiInsights, setAiInsights] = useState<string>('Crunching business numbers...');
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [updatingMenuId, setUpdatingMenuId] = useState<string | null>(null);
+  const [editingItemNumbers, setEditingItemNumbers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchInsights = async () => {
@@ -35,6 +36,20 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
       .eq('id', id);
     
     if (error) console.error("Menu update error:", error);
+    setUpdatingMenuId(null);
+  };
+
+  const handleUpdateItemNumber = async (id: string) => {
+    const newNum = editingItemNumbers[id];
+    if (newNum === undefined) return;
+    
+    setUpdatingMenuId(id);
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ item_number: newNum })
+      .eq('id', id);
+    
+    if (error) console.error("Item number update error:", error);
     setUpdatingMenuId(null);
   };
 
@@ -169,13 +184,9 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Live Cloud Configuration</p>
           </div>
           <div className="flex gap-4">
-            <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10">
-              <Plus size={18} />
-              Add New
-            </button>
             <button onClick={() => setIsEditingMenu(!isEditingMenu)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${isEditingMenu ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-100 hover:border-slate-200'}`}>
               {isEditingMenu ? <Check size={18} /> : <Edit2 size={18} />}
-              {isEditingMenu ? 'Save' : 'Edit Mode'}
+              {isEditingMenu ? 'Finish Editing' : 'Edit Menu Codes'}
             </button>
           </div>
         </div>
@@ -183,18 +194,33 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
         <div className="p-10">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {menu.map(item => (
-              <div key={item.id} className="relative bg-slate-50 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-indigo-100 hover:shadow-2xl hover:shadow-indigo-500/5 transition-all">
+              <div key={item.id} className="relative bg-slate-50 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-indigo-100 transition-all">
                 <div className="flex justify-between items-start mb-6">
-                  <span className="px-3 py-1 bg-white border border-slate-200 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] rounded-full">
-                    {item.category}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-white border border-slate-200 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] rounded-full">
+                      {item.category}
+                    </span>
+                    <div className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black flex items-center gap-1 border border-indigo-100">
+                      <Hash size={10} />
+                      {item.item_number || '--'}
+                    </div>
+                  </div>
                   <div className={`w-3 h-3 rounded-full ${item.isAvailable ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.5)]'}`} />
                 </div>
-                <h4 className="font-black text-slate-800 text-lg mb-1 leading-tight">{item.name}</h4>
-                <p className="text-indigo-600 font-black mb-6 text-sm">${Number(item.price).toFixed(2)}</p>
                 
                 {isEditingMenu ? (
-                  <div className="space-y-2 mt-4 pt-4 border-t border-slate-200/40">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Quick Code</label>
+                      <input 
+                        type="text"
+                        value={editingItemNumbers[item.id] ?? item.item_number ?? ''}
+                        onChange={(e) => setEditingItemNumbers(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        onBlur={() => handleUpdateItemNumber(item.id)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="e.g. 01"
+                      />
+                    </div>
                     <button 
                       disabled={updatingMenuId === item.id}
                       onClick={() => toggleAvailability(item.id, item.isAvailable)}
@@ -206,9 +232,13 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
                     </button>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 line-clamp-2 italic font-medium">
-                    {item.description}
-                  </p>
+                  <>
+                    <h4 className="font-black text-slate-800 text-lg mb-1 leading-tight">{item.name}</h4>
+                    <p className="text-indigo-600 font-black mb-6 text-sm">${Number(item.price).toFixed(2)}</p>
+                    <p className="text-xs text-slate-400 line-clamp-2 italic font-medium">
+                      {item.description}
+                    </p>
+                  </>
                 )}
               </div>
             ))}

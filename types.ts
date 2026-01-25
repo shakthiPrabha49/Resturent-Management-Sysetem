@@ -39,6 +39,7 @@ export interface AppSettings {
 
 export interface MenuItem {
   id: string;
+  item_number?: string;
   name: string;
   category: string;
   price: number;

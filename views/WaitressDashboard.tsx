@@ -21,28 +21,28 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Assign numbers to items and filter based on search
   const filteredMenu = useMemo(() => {
-    const itemsWithNumbers = menu.map((item, index) => ({
-      ...item,
-      displayNumber: (index + 1).toString().padStart(2, '0')
-    }));
-
-    if (!searchQuery.trim()) return itemsWithNumbers;
+    if (!searchQuery.trim()) return menu;
 
     const query = searchQuery.toLowerCase();
-    return itemsWithNumbers.filter(item => 
-      item.name.toLowerCase().includes(query) || 
-      item.displayNumber.includes(query) ||
-      item.category.toLowerCase().includes(query)
-    ).sort((a, b) => {
-      // Prioritize exact number matches or starts-with name matches
+    return [...menu].filter(item => {
+      const nameMatch = item.name.toLowerCase().includes(query);
+      const numberMatch = item.item_number?.toLowerCase().includes(query);
+      const categoryMatch = item.category.toLowerCase().includes(query);
+      return nameMatch || numberMatch || categoryMatch;
+    }).sort((a, b) => {
+      // Prioritize exact number matches
+      const aNum = a.item_number?.toLowerCase() || '';
+      const bNum = b.item_number?.toLowerCase() || '';
+      if (aNum === query) return -1;
+      if (bNum === query) return 1;
+      
+      // Then prioritize items that start with the query
       const aName = a.name.toLowerCase();
       const bName = b.name.toLowerCase();
-      if (a.displayNumber === query) return -1;
-      if (b.displayNumber === query) return 1;
       if (aName.startsWith(query) && !bName.startsWith(query)) return -1;
       if (!aName.startsWith(query) && bName.startsWith(query)) return 1;
+      
       return 0;
     });
   }, [menu, searchQuery]);
@@ -89,7 +89,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       addNotification(`Order sent for Table ${selectedTable.number}`);
       setCart([]);
       setSelectedTable(null);
-      setSearchQuery(''); // Clear search for next table
+      setSearchQuery('');
     } else {
       console.error("Submission error:", error);
     }
@@ -179,7 +179,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 flex flex-col min-h-[600px] overflow-hidden">
         {selectedTable ? (
           <div className="flex flex-col h-full">
-            {/* Header */}
             <div className="p-6 border-b border-slate-50">
               <div className="flex justify-between items-center mb-4">
                 <div>
@@ -194,7 +193,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 </button>
               </div>
 
-              {/* Search Bar */}
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input 
@@ -208,14 +206,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               </div>
             </div>
 
-            {/* Menu Items List */}
             <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
               {filteredMenu.length > 0 ? (
                 filteredMenu.map(item => (
                   <div key={item.id} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-500/5 transition-all group">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 text-[10px] font-black shrink-0 border border-indigo-100">
-                        {item.displayNumber}
+                        {item.item_number || '??'}
                       </div>
                       <div className="min-w-0">
                         <p className="font-bold text-slate-800 text-sm truncate">{item.name}</p>
@@ -252,7 +249,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               )}
             </div>
 
-            {/* Footer / Submit */}
             <div className="p-6 border-t border-slate-100 bg-slate-50/50">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
@@ -293,7 +289,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   );
 };
 
-// Simple Close Icon missing from previous imports
 const X = ({ size }: { size: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18"></line>
