@@ -57,7 +57,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
             Final Bills (Ready to Pay)
           </h2>
           <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-            {finalizedBills.length} TABLES WAITING
+            {finalizedBills.length} TABLES READY
           </span>
         </div>
 
@@ -66,8 +66,8 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
               <DollarSign size={32} className="text-slate-300" />
             </div>
-            <p className="text-slate-500 font-bold text-lg">No finalized bills yet.</p>
-            <p className="text-slate-400 text-sm mt-1">Wait for waitress to mark a table as 'Done'.</p>
+            <p className="text-slate-500 font-bold text-lg">No finalized bills found.</p>
+            <p className="text-slate-400 text-sm mt-1">Wait for a waitress to click "Finish Table".</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -78,7 +78,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Table T-{order.tableNumber}</h3>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Order #{order.id.slice(0,5)}</p>
                   </div>
-                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl cursor-pointer hover:bg-indigo-100 transition-colors">
                     <Printer size={20} />
                   </div>
                 </div>
@@ -94,14 +94,14 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
                     </div>
                   ))}
                   <div className="flex justify-between text-[11px] text-slate-400 font-bold uppercase tracking-widest pt-4">
-                    <span>Service (5%)</span>
+                    <span>Tax & Service (5%)</span>
                     <span>${(Number(order.total) * 0.05).toFixed(2)}</span>
                   </div>
                 </div>
 
                 <div className="mt-auto">
                   <div className="flex justify-between items-end mb-8">
-                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Total Amount</span>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Grand Total</span>
                     <span className="text-4xl font-black text-indigo-600 leading-none">${(Number(order.total) * 1.05).toFixed(2)}</span>
                   </div>
 
@@ -119,17 +119,17 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
         )}
 
         <div className="pt-8">
-          <h2 className="text-xl font-bold flex items-center gap-2 mb-6">
-            <History size={22} className="text-slate-600" />
-            Recent Log
+          <h2 className="text-xl font-bold flex items-center gap-2 mb-6 text-slate-700">
+            <History size={22} className="text-slate-400" />
+            Recent Activity
           </h2>
           <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
             <table className="w-full text-left">
               <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Timestamp</th>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Detail</th>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sum</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Time</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -166,7 +166,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ArrowUpCircle size={14} className="text-emerald-400" />
-                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Inflow</span>
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Sales</span>
                   </div>
                   <p className="text-lg font-black text-emerald-400">${todaysSales.toFixed(2)}</p>
                 </div>
@@ -175,7 +175,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <ArrowDownCircle size={14} className="text-rose-400" />
-                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Outflow</span>
+                    <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Outflow</span>
                   </div>
                   <p className="text-lg font-black text-rose-400">${todaysExpenses.toFixed(2)}</p>
                 </div>
@@ -190,7 +190,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
             <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
               <Wallet size={18} />
             </div>
-            Expense Entry
+            Log Expense
           </h3>
           <form onSubmit={handleExpenseSubmit} className="space-y-6">
             <div>
@@ -209,12 +209,12 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Reason / Description</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Description</label>
               <textarea 
                 value={expenseDesc}
                 onChange={(e) => setExpenseDesc(e.target.value)}
                 className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-rose-500/10 transition-all outline-none resize-none font-bold text-slate-700 text-sm"
-                placeholder="e.g. Daily market purchase"
+                placeholder="e.g. Fresh vegetable supply"
                 rows={3}
                 required
               />
@@ -223,7 +223,7 @@ const CashierDashboard: React.FC<CashierDashboardProps> = ({
               type="submit"
               className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-xl shadow-slate-900/10 hover:bg-black transition-all uppercase tracking-[0.2em] text-xs"
             >
-              Post Expense
+              Add Transaction
             </button>
           </form>
         </div>

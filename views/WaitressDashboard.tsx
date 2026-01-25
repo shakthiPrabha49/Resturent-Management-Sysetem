@@ -67,7 +67,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     const cartTotal = cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
 
     if (activeOrderForSelected) {
-      // Append to existing order items array
       const updatedItems = [...activeOrderForSelected.items, ...cart];
       const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
       
@@ -85,7 +84,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         addNotification(`Items added to Table T-${selectedTable.number}`);
       }
     } else {
-      // Create a brand new order for the session
       const newOrder: Order = {
         id: Math.random().toString(36).substr(2, 9),
         tableId: selectedTable.id,
@@ -113,14 +111,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     if (!order) return;
 
     setIsSubmitting(true);
-    // Mark table as COMPLETED to signal the cashier
     const { error } = await supabase
       .from('tables')
       .update({ status: TableStatus.COMPLETED })
       .eq('id', table.id);
 
     if (!error) {
-      addNotification(`Table T-${table.number} finalized. Bill sent to cashier.`);
+      addNotification(`Table T-${table.number} finalized. Ready for cashier.`);
       setSelectedTable(null);
     }
     setIsSubmitting(false);
@@ -132,7 +129,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <Users size={20} className="text-indigo-600" />
-            Floor Layout
+            Active Floor
           </h2>
         </div>
         
@@ -171,14 +168,14 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <div className="space-y-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
                       <Clock size={12} className="text-indigo-500" />
-                      In Progress
+                      Active Bill
                     </div>
                     {table.status !== TableStatus.COMPLETED && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); finishTable(table); }}
                         className="w-full py-2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-black transition-all shadow-lg"
                       >
-                        Done / Bill
+                        Finish Table
                       </button>
                     )}
                   </div>
@@ -206,13 +203,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <div className="flex items-center gap-2 mt-1">
                     <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {activeOrderForSelected ? 'Adding more items' : 'New Table Order'}
+                      {activeOrderForSelected ? 'Adding to running bill' : 'Starting new session'}
                     </p>
                   </div>
                 </div>
                 <button 
                   onClick={() => { setSelectedTable(null); setCart([]); }}
-                  className="p-3 hover:bg-white rounded-2xl text-slate-400 hover:text-slate-600 transition-all border border-transparent hover:border-slate-100"
+                  className="p-3 hover:bg-white rounded-2xl text-slate-400 hover:text-slate-600 transition-all"
                 >
                   <X size={20} />
                 </button>
@@ -235,7 +232,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               {filteredMenu.map(item => (
                 <div key={item.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-3xl border border-slate-100 hover:border-indigo-100 hover:bg-white transition-all group">
                   <div className="flex items-center gap-4">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-lg shadow-indigo-200">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-lg">
                       {item.item_number || '??'}
                     </div>
                     <div>
@@ -259,7 +256,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                     </span>
                     <button 
                       onClick={() => addToCart(item)}
-                      className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all"
+                      className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl transition-all"
                     >
                       <Plus size={16} />
                     </button>
@@ -272,7 +269,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <div className="flex justify-between items-center mb-6 px-2">
                 <div className="flex items-center gap-2">
                   <ShoppingBag size={20} className="text-indigo-600" />
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Total</span>
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Subtotal</span>
                 </div>
                 <span className="text-3xl font-black text-slate-900">
                   ${cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
@@ -284,7 +281,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 disabled={cart.length === 0 || isSubmitting}
                 className="w-full py-5 bg-indigo-600 text-white font-black rounded-[24px] shadow-2xl shadow-indigo-600/30 flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
               >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Send to Kitchen</>}
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Send Order</>}
               </button>
             </div>
           </div>
@@ -294,8 +291,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <ShoppingBag size={48} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Select a Table</h3>
-              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Choose a table from the floor to start ordering or add to an existing bill.</p>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Select Table</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Click any T-x table from the floor to manage its running bill.</p>
             </div>
           </div>
         )}

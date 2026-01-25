@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { Order, OrderStatus, TableStatus, StockEntry } from '../types.ts';
-import { ChefHat, ClipboardCheck, Timer, Package, CheckCircle2, Plus, Loader2 } from 'lucide-react';
+// Added missing Clock icon import from lucide-react
+import { ChefHat, ClipboardCheck, Timer, Package, CheckCircle2, Plus, Loader2, Clock } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
 
 interface ChefDashboardProps {
@@ -59,12 +60,12 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
       <div className="xl:col-span-3 space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold flex items-center gap-2">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <ChefHat size={22} className="text-indigo-600" />
             Kitchen Queue
           </h2>
           <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold border border-indigo-100">
-            {activeOrders.length} TICKETS
+            {activeOrders.length} ACTIVE TICKETS
           </span>
         </div>
 
@@ -73,7 +74,7 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <ClipboardCheck size={32} className="text-slate-300" />
             </div>
-            <p className="text-slate-400 font-medium">Kitchen is quiet. All orders served!</p>
+            <p className="text-slate-400 font-medium">All orders cleared!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -82,16 +83,16 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
               const progress = (completedCount / order.items.length) * 100;
 
               return (
-                <div key={order.id} className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-xl hover:shadow-indigo-500/5 transition-all">
+                <div key={order.id} className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-xl transition-all">
                   <div className="flex justify-between items-start mb-6">
                     <div>
                       <h3 className="text-lg font-black text-slate-800 tracking-tight">Table T-{order.tableNumber}</h3>
                       <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                        <Timer size={12} />
-                        In {Math.floor((Date.now() - order.timestamp) / 60000)}m
+                        <Clock size={12} />
+                        Received {Math.floor((Date.now() - order.timestamp) / 60000)}m ago
                       </div>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-tighter ${
+                    <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase ${
                       order.status === OrderStatus.PENDING ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
                     }`}>
                       {order.status}
@@ -104,7 +105,7 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
 
                   <div className="flex-1 space-y-2.5">
                     {order.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl group border border-transparent hover:border-slate-200 hover:bg-white transition-all">
+                      <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl group border border-transparent hover:border-slate-200 transition-all">
                         <div className="flex items-center gap-3">
                           <span className="w-8 h-8 flex items-center justify-center bg-white text-indigo-600 font-black rounded-lg text-sm border border-slate-100">
                             {item.quantity}
@@ -119,16 +120,16 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
                           ) : (
                             <>
                               {item.status === 'Pending' && (
-                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Cooking')} className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-indigo-700 transition-colors shadow-sm">
+                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Cooking')} className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors">
                                   Start
                                 </button>
                               )}
                               {item.status === 'Cooking' && (
-                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Completed')} className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase hover:bg-emerald-600 transition-colors shadow-sm">
+                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Completed')} className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors">
                                   Finish
                                 </button>
                               )}
-                              {item.status === 'Completed' && <CheckCircle2 size={22} className="text-emerald-500 drop-shadow-sm" />}
+                              {item.status === 'Completed' && <CheckCircle2 size={22} className="text-emerald-500" />}
                             </>
                           )}
                         </div>
@@ -143,7 +144,7 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
       </div>
 
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-100 h-fit">
-        <h3 className="text-lg font-bold flex items-center gap-2 mb-8">
+        <h3 className="text-lg font-bold flex items-center gap-2 mb-8 text-slate-800">
           <Package size={20} className="text-indigo-600" />
           Stock Monitor
         </h3>
@@ -158,31 +159,16 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-bold text-slate-700">{itemName}</span>
                   <span className={`text-xs font-black ${isLow ? 'text-rose-600 animate-pulse' : 'text-slate-500'}`}>
-                    {totalQty} U
+                    {totalQty} UNITS
                   </span>
                 </div>
                 <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                   <div className={`h-full transition-all duration-1000 ${isLow ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min((totalQty / 150) * 100, 100)}%` }} />
                 </div>
-                {itemStock.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-slate-200 space-y-1">
-                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">FIFO Queue</p>
-                    {itemStock.map(batch => (
-                      <div key={batch.id} className="flex justify-between text-[10px] font-medium text-slate-500">
-                        <span>{new Date(batch.purchaseDate).toLocaleDateString()}</span>
-                        <span className="font-bold">Qty: {batch.quantity}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
-        <button className="w-full mt-8 py-4 border-2 border-dashed border-slate-200 rounded-[20px] text-slate-400 hover:text-indigo-600 hover:border-indigo-200 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
-          <Plus size={16} />
-          Restock Request
-        </button>
       </div>
     </div>
   );
