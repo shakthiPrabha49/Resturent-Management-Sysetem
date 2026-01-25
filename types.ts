@@ -75,9 +75,9 @@ export interface Order {
 
 export interface StockEntry {
   id: string;
-  itemName: string;
+  item_name: string;
   quantity: number;
-  purchaseDate: number;
+  purchase_date: number;
 }
 
 export interface Transaction {

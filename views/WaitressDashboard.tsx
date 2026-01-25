@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User } from '../types.ts';
-import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, CheckCircle2, Loader2, X, Lock } from 'lucide-react';
+import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, Loader2, X, Lock } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
 
 interface WaitressDashboardProps {
@@ -9,8 +9,7 @@ interface WaitressDashboardProps {
   tables: Table[];
   menu: MenuItem[];
   orders: Order[];
-  setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
-  updateTableStatus: (tableId: string, status: TableStatus, waitressName?: string) => void;
+  updateTableStatus: (tableId: string, status: TableStatus, waitressName?: string | null) => void;
   addNotification: (msg: string) => void;
 }
 
@@ -28,13 +27,11 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   }, [selectedTable, orders]);
 
   const filteredMenu = useMemo(() => {
-    if (!searchQuery.trim()) return menu;
     const query = searchQuery.toLowerCase();
-    return [...menu].filter(item => {
-      const nameMatch = item.name.toLowerCase().includes(query);
-      const numberMatch = item.item_number?.toLowerCase().includes(query);
-      return nameMatch || numberMatch;
-    });
+    return menu.filter(item => 
+      item.name.toLowerCase().includes(query) || 
+      item.item_number?.toLowerCase().includes(query)
+    );
   }, [menu, searchQuery]);
 
   const addToCart = (item: MenuItem) => {
@@ -63,64 +60,64 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
     const cartTotal = cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0);
 
-    if (activeOrderForSelected) {
-      const updatedItems = [...activeOrderForSelected.items, ...cart];
-      const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
-      
-      const { error } = await supabase
-        .from('orders')
-        .update({ 
-          items: updatedItems, 
-          total: updatedTotal, 
-          status: OrderStatus.PENDING 
-        })
-        .eq('id', activeOrderForSelected.id);
+    try {
+      if (activeOrderForSelected) {
+        const updatedItems = [...activeOrderForSelected.items, ...cart];
+        const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
+        
+        const { error } = await supabase
+          .from('orders')
+          .update({ 
+            items: updatedItems, 
+            total: updatedTotal, 
+            status: OrderStatus.PENDING 
+          })
+          .eq('id', activeOrderForSelected.id);
 
-      if (!error) {
+        if (error) throw error;
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
-        addNotification(`Items added to Table T-${selectedTable.number}`);
+        addNotification(`Updated T-${selectedTable.number}`);
       } else {
-        console.error("Update Error:", error);
-      }
-    } else {
-      const newOrderData = {
-        id: Math.random().toString(36).substr(2, 9),
-        table_id: selectedTable.id,
-        table_number: selectedTable.number,
-        items: cart,
-        status: OrderStatus.PENDING,
-        timestamp: Date.now(),
-        total: cartTotal,
-        waitress_name: currentUser.name
-      };
+        const newOrderData = {
+          id: Math.random().toString(36).substr(2, 9),
+          table_id: selectedTable.id,
+          table_number: selectedTable.number,
+          items: cart,
+          status: OrderStatus.PENDING,
+          timestamp: Date.now(),
+          total: cartTotal,
+          waitress_name: currentUser.name
+        };
 
-      const { error } = await supabase.from('orders').insert(newOrderData);
-      if (!error) {
+        const { error } = await supabase.from('orders').insert(newOrderData);
+        if (error) throw error;
+        
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
-        addNotification(`Table T-${selectedTable.number} now served by ${currentUser.name}`);
-      } else {
-        console.error("Insert Error:", error);
+        addNotification(`New Order T-${selectedTable.number}`);
       }
+      
+      setCart([]);
+      setSelectedTable(null);
+      setSearchQuery('');
+    } catch (err: any) {
+      console.error("Order Failure:", err);
+      alert(`Could not send to kitchen: ${err.message || "Unknown Error"}. Please ensure you've updated your Supabase schema.`);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setCart([]);
-    setSelectedTable(null);
-    setSearchQuery('');
-    setIsSubmitting(false);
   };
 
   const finishTable = async (table: Table) => {
-    const order = orders.find(o => o.table_id === table.id && o.status !== OrderStatus.PAID);
-    if (!order) return;
-
     setIsSubmitting(true);
     const { error } = await supabase
       .from('tables')
       .update({ status: TableStatus.COMPLETED })
       .eq('id', table.id);
 
-    if (!error) {
-      addNotification(`Table T-${table.number} finalized for billing.`);
+    if (error) {
+      alert("Failed to finalize table.");
+    } else {
+      addNotification(`Table T-${table.number} Completed`);
       setSelectedTable(null);
     }
     setIsSubmitting(false);
@@ -132,10 +129,10 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <Users size={20} className="text-indigo-600" />
-            Floor Layout
+            Floor Status
           </h2>
           <div className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
-            Logged in as: {currentUser.name}
+            Current Waitress: {currentUser.name}
           </div>
         </div>
         
@@ -154,7 +151,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   isSelected 
                     ? 'border-indigo-600 bg-indigo-50 shadow-xl ring-4 ring-indigo-50' 
                     : isAssignedToOther
-                      ? 'border-slate-100 bg-slate-50/50 grayscale opacity-60 cursor-not-allowed'
+                      ? 'border-slate-100 bg-slate-50/50 grayscale opacity-40 cursor-not-allowed'
                       : table.status === TableStatus.AVAILABLE 
                         ? 'border-slate-100 bg-white hover:border-indigo-200' 
                         : table.status === TableStatus.COMPLETED
@@ -183,27 +180,26 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                    </div>
                 )}
 
-                {hasOrder && !isAssignedToOther && (
+                {hasOrder && !isAssignedToOther && table.status !== TableStatus.AVAILABLE && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
                       <Clock size={12} className="text-indigo-500" />
-                      In Progress
+                      Active
                     </div>
                     {table.status !== TableStatus.COMPLETED && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); finishTable(table); }}
                         className="w-full py-2 bg-slate-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-black transition-all shadow-lg"
                       >
-                        Finish Table
+                        Finish Bill
                       </button>
                     )}
                   </div>
                 )}
                 
-                {!hasOrder && !isAssignedToOther && (
-                  <div className="mt-6 flex items-center gap-2 text-[10px] text-indigo-600 font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus size={12} />
-                    Take Table
+                {isAssignedToOther && (
+                  <div className="mt-4 flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase">
+                    <Lock size={12} /> Occupied
                   </div>
                 )}
               </button>
@@ -222,7 +218,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <div className="flex items-center gap-2 mt-1">
                     <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {activeOrderForSelected ? 'Continuing Service' : 'Opening New Bill'}
+                      {activeOrderForSelected ? 'Adding to existing' : 'New Order'}
                     </p>
                   </div>
                 </div>
@@ -240,8 +236,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search item name or code..."
-                  className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[22px] focus:ring-4 focus:ring-indigo-500/10 outline-none font-bold text-sm transition-all shadow-sm"
+                  placeholder="Search item code..."
+                  className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[22px] outline-none font-bold text-sm shadow-sm"
                   autoFocus
                 />
               </div>
@@ -260,25 +256,9 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => removeFromCart(item.id)}
-                      className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${
-                        cart.find(i => i.menuItemId === item.id) 
-                          ? 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' 
-                          : 'opacity-20 cursor-not-allowed'
-                      }`}
-                    >
-                      <Minus size={16} />
-                    </button>
-                    <span className="w-5 text-center font-black text-sm text-slate-900">
-                      {cart.find(i => i.menuItemId === item.id)?.quantity || 0}
-                    </span>
-                    <button 
-                      onClick={() => addToCart(item)}
-                      className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl transition-all"
-                    >
-                      <Plus size={16} />
-                    </button>
+                    <button onClick={() => removeFromCart(item.id)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"><Minus size={16} /></button>
+                    <span className="w-5 text-center font-black text-sm text-slate-900">{cart.find(i => i.menuItemId === item.id)?.quantity || 0}</span>
+                    <button onClick={() => addToCart(item)} className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl"><Plus size={16} /></button>
                   </div>
                 </div>
               ))}
@@ -286,10 +266,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
             <div className="p-8 border-t border-slate-100 bg-slate-50/50">
               <div className="flex justify-between items-center mb-6 px-2">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag size={20} className="text-indigo-600" />
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Selection Total</span>
-                </div>
+                <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Total</span>
                 <span className="text-3xl font-black text-slate-900">
                   ${cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
                 </span>
@@ -298,9 +275,9 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <button 
                 onClick={submitOrder}
                 disabled={cart.length === 0 || isSubmitting}
-                className="w-full py-5 bg-indigo-600 text-white font-black rounded-[24px] shadow-2xl shadow-indigo-600/30 flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
+                className="w-full py-5 bg-indigo-600 text-white font-black rounded-[24px] shadow-2xl flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
               >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Confirm to Kitchen</>}
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Send to Kitchen</>}
               </button>
             </div>
           </div>
@@ -310,8 +287,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <ShoppingBag size={48} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Floor Overview</h3>
-              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Select a free table to start serving, or continue managing one of your active tables.</p>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Table Overview</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Please select a table on the floor map to start an order.</p>
             </div>
           </div>
         )}

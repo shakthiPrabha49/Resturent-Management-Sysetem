@@ -27,8 +27,9 @@ export const INITIAL_MENU: MenuItem[] = [
 ];
 
 export const INITIAL_STOCK: StockEntry[] = [
-  { id: 's1', itemName: 'Mozzarella', quantity: 50, purchaseDate: Date.now() - 86400000 * 3 },
-  { id: 's2', itemName: 'Pasta', quantity: 100, purchaseDate: Date.now() - 86400000 * 2 },
-  { id: 's3', itemName: 'Tomato', quantity: 30, purchaseDate: Date.now() - 86400000 * 5 },
-  { id: 's4', itemName: 'Mozzarella', quantity: 50, purchaseDate: Date.now() - 86400000 * 1 }, // Newer stock
+  // Fix: renamed itemName to item_name and purchaseDate to purchase_date to match StockEntry interface
+  { id: 's1', item_name: 'Mozzarella', quantity: 50, purchase_date: Date.now() - 86400000 * 3 },
+  { id: 's2', item_name: 'Pasta', quantity: 100, purchase_date: Date.now() - 86400000 * 2 },
+  { id: 's3', item_name: 'Tomato', quantity: 30, purchase_date: Date.now() - 86400000 * 5 },
+  { id: 's4', item_name: 'Mozzarella', quantity: 50, purchase_date: Date.now() - 86400000 * 1 }, // Newer stock
 ];

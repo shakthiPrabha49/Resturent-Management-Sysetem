@@ -10,7 +10,7 @@ import ChefDashboard from './views/ChefDashboard.tsx';
 import WaitressDashboard from './views/WaitressDashboard.tsx';
 import SettingsView from './views/Settings.tsx';
 import Sidebar from './components/Sidebar.tsx';
-import { LogOut, Bell, Menu, X } from 'lucide-react';
+import { LogOut, Menu, X } from 'lucide-react';
 import { supabase } from './supabaseClient.ts';
 
 const SETTINGS_KEY = 'gustoflow_local_settings';
@@ -37,62 +37,63 @@ const App: React.FC = () => {
   });
 
   const addNotification = useCallback((msg: string) => {
-    console.log("Notification:", msg);
+    console.log("App Notification:", msg);
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const [
-          { data: tablesData },
-          { data: menuData },
-          { data: ordersData },
-          { data: stockData },
-          { data: transData },
-          settingsResult
-        ] = await Promise.all([
-          supabase.from('tables').select('*').order('number'),
-          supabase.from('menu_items').select('*'),
-          supabase.from('orders').select('*').order('timestamp', { ascending: false }),
-          supabase.from('stock_entries').select('*').order('purchase_date'),
-          supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
-          supabase.from('app_settings').select('*').maybeSingle()
-        ]);
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [
+        { data: tablesData },
+        { data: menuData },
+        { data: ordersData },
+        { data: stockData },
+        { data: transData },
+        settingsResult
+      ] = await Promise.all([
+        supabase.from('tables').select('*').order('number'),
+        supabase.from('menu_items').select('*'),
+        supabase.from('orders').select('*').order('timestamp', { ascending: false }),
+        supabase.from('stock_entries').select('*').order('purchase_date'),
+        supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
+        supabase.from('app_settings').select('*').maybeSingle()
+      ]);
 
-        if (tablesData) setTables(tablesData);
-        if (menuData) setMenu(menuData);
-        if (ordersData) setOrders(ordersData);
-        if (stockData) setStock(stockData);
-        if (transData) setTransactions(transData);
-        
-        if (settingsResult?.data) {
-          setAppSettings(settingsResult.data);
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
-        }
-      } catch (error) {
-        console.error("Sync Error:", error);
-      } finally {
-        setIsLoading(false);
+      if (tablesData) setTables(tablesData);
+      if (menuData) setMenu(menuData);
+      if (ordersData) setOrders(ordersData);
+      if (stockData) setStock(stockData);
+      if (transData) setTransactions(transData);
+      
+      if (settingsResult?.data) {
+        setAppSettings(settingsResult.data);
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
       }
-    };
+    } catch (error) {
+      console.error("Sync Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchData();
 
     const channels = [
       supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
-        if (payload.new) setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
+        if (payload.eventType === 'UPDATE') {
+          setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
+        } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+          fetchData(); // Refresh list on structural changes
+        }
       }).subscribe(),
       supabase.channel('orders').on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
         if (payload.eventType === 'INSERT') setOrders(curr => [payload.new as Order, ...curr]);
         else if (payload.eventType === 'UPDATE') setOrders(curr => curr.map(o => o.id === payload.new.id ? payload.new as Order : o));
+        else if (payload.eventType === 'DELETE') setOrders(curr => curr.filter(o => o.id !== payload.old.id));
       }).subscribe(),
       supabase.channel('menu').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, payload => {
-        setMenu(curr => {
-          if (payload.eventType === 'UPDATE') return curr.map(m => m.id === payload.new.id ? payload.new as MenuItem : m);
-          if (payload.eventType === 'INSERT') return [...curr, payload.new as MenuItem];
-          return curr;
-        });
+        fetchData();
       }).subscribe()
     ];
 
@@ -105,10 +106,15 @@ const App: React.FC = () => {
     setCurrentView('Dashboard');
   };
 
-  const updateTableStatus = useCallback(async (tableId: string, status: TableStatus, waitressName?: string) => {
+  const updateTableStatus = useCallback(async (tableId: string, status: TableStatus, waitressName?: string | null) => {
     const updateData: any = { status };
     if (waitressName !== undefined) updateData.waitress_name = waitressName;
-    await supabase.from('tables').update(updateData).eq('id', tableId);
+    
+    const { error } = await supabase.from('tables').update(updateData).eq('id', tableId);
+    if (error) {
+      console.error("Table Update Error:", error);
+      alert("Database error: Table status could not be updated.");
+    }
   }, []);
 
   const processPayment = useCallback(async (orderId: string, amount: number) => {
@@ -122,11 +128,12 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       category: 'Sales'
     };
-    await Promise.all([
-      supabase.from('transactions').insert(newTransaction),
-      supabase.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId),
-      updateTableStatus(order.table_id, TableStatus.AVAILABLE, null)
-    ]);
+    
+    const { error: txError } = await supabase.from('transactions').insert(newTransaction);
+    if (txError) return alert("Payment processing failed.");
+
+    await supabase.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId);
+    await updateTableStatus(order.table_id, TableStatus.AVAILABLE, null);
   }, [orders, updateTableStatus]);
 
   const addExpense = useCallback(async (amount: number, description: string) => {
@@ -147,7 +154,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">Syncing GustoFlow...</p>
+        <p className="font-bold text-slate-500 font-mono tracking-widest uppercase">Connecting to Database...</p>
       </div>
     </div>
   );
@@ -163,9 +170,9 @@ const App: React.FC = () => {
       case UserRole.CASHIER:
         return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} tables={tables} />;
       case UserRole.CHEF:
-        return <ChefDashboard orders={orders} setOrders={() => {}} stock={stock} setStock={() => {}} deductStock={() => {}} updateTableStatus={updateTableStatus} />;
+        return <ChefDashboard orders={orders} updateTableStatus={updateTableStatus} />;
       case UserRole.WAITRESS:
-        return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} setOrders={() => {}} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
+        return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
       default:
         return null;
     }
@@ -201,7 +208,7 @@ const App: React.FC = () => {
               <p className="text-sm font-bold text-slate-700">{currentUser.name}</p>
               <div className="flex items-center justify-end gap-1">
                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Online</p>
+                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Live Sync</p>
               </div>
             </div>
             <button onClick={() => setCurrentUser(null)} className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
