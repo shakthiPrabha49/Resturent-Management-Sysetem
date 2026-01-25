@@ -51,6 +51,7 @@ export interface Table {
   id: string;
   number: number;
   status: TableStatus;
+  waitress_name?: string;
 }
 
 export interface OrderItem {
@@ -69,6 +70,7 @@ export interface Order {
   status: OrderStatus;
   timestamp: number;
   total: number;
+  waitress_name?: string;
 }
 
 export interface StockEntry {

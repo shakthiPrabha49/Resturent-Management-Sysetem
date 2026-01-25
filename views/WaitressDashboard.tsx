@@ -1,20 +1,21 @@
 
 import React, { useState, useMemo } from 'react';
-import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem } from '../types.ts';
-import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, CheckCircle2, Loader2, X } from 'lucide-react';
+import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User } from '../types.ts';
+import { Users, Clock, Plus, Minus, Send, ShoppingBag, Search, CheckCircle2, Loader2, X, Lock } from 'lucide-react';
 import { supabase } from '../supabaseClient.ts';
 
 interface WaitressDashboardProps {
+  currentUser: User;
   tables: Table[];
   menu: MenuItem[];
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
-  updateTableStatus: (tableId: string, status: TableStatus) => void;
+  updateTableStatus: (tableId: string, status: TableStatus, waitressName?: string) => void;
   addNotification: (msg: string) => void;
 }
 
 const WaitressDashboard: React.FC<WaitressDashboardProps> = ({ 
-  tables, menu, orders, setOrders, updateTableStatus, addNotification 
+  currentUser, tables, menu, orders, setOrders, updateTableStatus, addNotification 
 }) => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [cart, setCart] = useState<OrderItem[]>([]);
@@ -80,6 +81,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         .eq('id', activeOrderForSelected.id);
 
       if (!error) {
+        // Table already has waitress assigned from first round
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
         addNotification(`Items added to Table T-${selectedTable.number}`);
       }
@@ -91,12 +93,14 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         items: cart,
         status: OrderStatus.PENDING,
         timestamp: Date.now(),
-        total: cartTotal
+        total: cartTotal,
+        waitress_name: currentUser.name
       };
       const { error } = await supabase.from('orders').insert(newOrder);
       if (!error) {
-        await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
-        addNotification(`New bill started for Table T-${selectedTable.number}`);
+        // Assign current waitress to table status tracking
+        await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
+        addNotification(`Table T-${selectedTable.number} now served by ${currentUser.name}`);
       }
     }
 
@@ -117,7 +121,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       .eq('id', table.id);
 
     if (!error) {
-      addNotification(`Table T-${table.number} finalized. Ready for cashier.`);
+      addNotification(`Table T-${table.number} finalized for billing.`);
       setSelectedTable(null);
     }
     setIsSubmitting(false);
@@ -129,27 +133,34 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <Users size={20} className="text-indigo-600" />
-            Active Floor
+            Floor Layout
           </h2>
+          <div className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
+            Logged in as: {currentUser.name}
+          </div>
         </div>
         
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {tables.map(table => {
             const hasOrder = orders.some(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
             const isSelected = selectedTable?.id === table.id;
+            const isAssignedToOther = table.waitress_name && table.waitress_name !== currentUser.name;
             
             return (
               <button
                 key={table.id}
+                disabled={isAssignedToOther && table.status !== TableStatus.AVAILABLE}
                 onClick={() => setSelectedTable(table)}
                 className={`p-5 rounded-[28px] border-2 transition-all text-left relative overflow-hidden group ${
                   isSelected 
                     ? 'border-indigo-600 bg-indigo-50 shadow-xl ring-4 ring-indigo-50' 
-                    : table.status === TableStatus.AVAILABLE 
-                      ? 'border-slate-100 bg-white hover:border-indigo-200' 
-                      : table.status === TableStatus.COMPLETED
-                        ? 'border-emerald-200 bg-emerald-50'
-                        : 'border-amber-100 bg-amber-50/50'
+                    : isAssignedToOther
+                      ? 'border-slate-100 bg-slate-50/50 grayscale opacity-60 cursor-not-allowed'
+                      : table.status === TableStatus.AVAILABLE 
+                        ? 'border-slate-100 bg-white hover:border-indigo-200' 
+                        : table.status === TableStatus.COMPLETED
+                          ? 'border-emerald-200 bg-emerald-50'
+                          : 'border-amber-100 bg-amber-50/50'
                 }`}
               >
                 <div className="flex justify-between items-start mb-4">
@@ -164,11 +175,20 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   </div>
                 </div>
 
-                {hasOrder && (
+                {table.waitress_name && (
+                   <div className="mb-4 flex items-center gap-1.5">
+                     <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter truncate max-w-[100px]">
+                       {isAssignedToOther ? `Staff: ${table.waitress_name}` : 'My Table'}
+                     </span>
+                   </div>
+                )}
+
+                {hasOrder && !isAssignedToOther && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
                       <Clock size={12} className="text-indigo-500" />
-                      Active Bill
+                      In Progress
                     </div>
                     {table.status !== TableStatus.COMPLETED && (
                       <button 
@@ -180,11 +200,17 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                     )}
                   </div>
                 )}
+
+                {isAssignedToOther && (
+                  <div className="mt-4 flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase">
+                    <Lock size={12} /> Handle Locked
+                  </div>
+                )}
                 
-                {!hasOrder && (
+                {!hasOrder && !isAssignedToOther && (
                   <div className="mt-6 flex items-center gap-2 text-[10px] text-indigo-600 font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
                     <Plus size={12} />
-                    Open Order
+                    Take Table
                   </div>
                 )}
               </button>
@@ -203,7 +229,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <div className="flex items-center gap-2 mt-1">
                     <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {activeOrderForSelected ? 'Adding to running bill' : 'Starting new session'}
+                      {activeOrderForSelected ? 'Continuing Service' : 'Opening New Bill'}
                     </p>
                   </div>
                 </div>
@@ -269,7 +295,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <div className="flex justify-between items-center mb-6 px-2">
                 <div className="flex items-center gap-2">
                   <ShoppingBag size={20} className="text-indigo-600" />
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Subtotal</span>
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-500">Selection Total</span>
                 </div>
                 <span className="text-3xl font-black text-slate-900">
                   ${cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
@@ -281,7 +307,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 disabled={cart.length === 0 || isSubmitting}
                 className="w-full py-5 bg-indigo-600 text-white font-black rounded-[24px] shadow-2xl shadow-indigo-600/30 flex items-center justify-center gap-3 hover:bg-indigo-700 transition-all disabled:opacity-50 uppercase tracking-[0.2em] text-xs"
               >
-                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Send Order</>}
+                {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <><Send size={18} /> Confirm to Kitchen</>}
               </button>
             </div>
           </div>
@@ -291,8 +317,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <ShoppingBag size={48} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Select Table</h3>
-              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Click any T-x table from the floor to manage its running bill.</p>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Floor Overview</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Select a free table to start serving, or continue managing one of your active tables.</p>
             </div>
           </div>
         )}
