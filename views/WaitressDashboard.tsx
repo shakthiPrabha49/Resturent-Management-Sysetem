@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User } from '../types.ts';
-import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2 } from 'lucide-react';
+import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2, CreditCard } from 'lucide-react';
 import { db } from '../db.ts';
 import { playSound, SOUNDS } from '../utils/audio.ts';
 
@@ -124,6 +124,15 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     }
   };
 
+  const handleSendToCashier = async (e: React.MouseEvent, table: Table) => {
+    e.stopPropagation(); // Don't open the menu view
+    const confirmBill = window.confirm(`Send T-${table.number} bill to Cashier for payment?`);
+    if (confirmBill) {
+      await updateTableStatus(table.id, TableStatus.COMPLETED);
+      playSound(SOUNDS.CASH_REGISTER);
+    }
+  };
+
   // --- VIEW 1: MAIN FLOOR (Table Grid) ---
   if (!selectedTable) {
     return (
@@ -166,11 +175,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               [TableStatus.COMPLETED]: 'bg-slate-900 text-white border-slate-900',
             };
 
+            const isOccupied = [TableStatus.ORDERING, TableStatus.COOKING, TableStatus.READY].includes(table.status);
+
             return (
               <div key={table.id} className="relative">
                 <button 
                   onClick={() => !isEditingLayout && setSelectedTable(table)} 
-                  className={`w-full p-6 rounded-xl border transition-all text-left flex flex-col justify-between h-44 group ${isEditingLayout ? 'opacity-60 cursor-default' : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1'}`}
+                  className={`w-full p-6 rounded-xl border transition-all text-left flex flex-col justify-between h-48 group ${isEditingLayout ? 'opacity-60 cursor-default' : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg hover:-translate-y-1'}`}
                 >
                   <div className="flex justify-between items-start">
                     <span className="text-3xl font-bold text-slate-800">T{table.number}</span>
@@ -181,23 +192,35 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   
                   <div className="flex flex-col gap-2 mt-auto">
                     {tableOrder ? (
-                      <div className="flex flex-col">
-                        <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-tighter mb-1">Serving Now</div>
-                        <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                          <Clock size={12} /> {Math.floor((Date.now() - tableOrder.timestamp) / 60000)}m active
+                      <div className="flex flex-col mb-1">
+                        <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-tighter mb-0.5">Serving Now</div>
+                        <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                          <Clock size={10} /> {Math.floor((Date.now() - tableOrder.timestamp) / 60000)}m
                         </div>
                       </div>
                     ) : (
-                      <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Available</div>
+                      <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-1">Available</div>
                     )}
                     
-                    {!isEditingLayout && table.status === TableStatus.COMPLETED && (
+                    {!isEditingLayout && isOccupied && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); db.from('tables').update({ status: TableStatus.AVAILABLE }).eq('id', table.id); }} 
-                        className="w-full mt-2 py-2 bg-slate-900 text-white text-[9px] font-bold uppercase rounded-lg hover:bg-slate-800 transition-all shadow-sm"
+                        onClick={(e) => handleSendToCashier(e, table)}
+                        className="w-full py-2 bg-indigo-600 text-white text-[9px] font-bold uppercase rounded-lg hover:bg-indigo-700 transition-all shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Reset Floor
+                        <CreditCard size={12} /> Send Bill
                       </button>
+                    )}
+
+                    {!isEditingLayout && table.status === TableStatus.COMPLETED && (
+                      <div className="text-center">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 italic">At Checkout...</p>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); db.from('tables').update({ status: TableStatus.AVAILABLE }).eq('id', table.id); }} 
+                          className="w-full py-2 bg-slate-900 text-white text-[9px] font-bold uppercase rounded-lg hover:bg-slate-800 transition-all shadow-sm"
+                        >
+                          Reset Floor
+                        </button>
+                      </div>
                     )}
                   </div>
                 </button>
@@ -235,7 +258,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     );
   }
 
-  // --- VIEW 2: ITEM MENU (Hidden Table Grid) ---
+  // --- VIEW 2: ITEM MENU (Order Entry) ---
   return (
     <div className="max-w-7xl mx-auto animate-in slide-in-from-right-4 duration-400">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
