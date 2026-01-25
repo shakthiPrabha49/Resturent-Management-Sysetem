@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { UserRole, AppSettings } from '../types.ts';
 import { 
@@ -9,7 +8,8 @@ import {
   Package, 
   Table as TableIcon, 
   Settings,
-  X
+  X,
+  User as UserIcon
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,25 +29,25 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
       case UserRole.OWNER:
         return [
           { icon: LayoutDashboard, label: 'Analytics', view: 'Dashboard' },
-          { icon: UtensilsCrossed, label: 'Menu Management', view: 'Dashboard' },
+          { icon: UtensilsCrossed, label: 'Menu List', view: 'Dashboard' },
           { icon: Package, label: 'Stock Audit', view: 'Dashboard' },
-          { icon: CreditCard, label: 'Cash Book', view: 'Dashboard' },
+          { icon: CreditCard, label: 'Financials', view: 'Dashboard' },
         ];
       case UserRole.CASHIER:
         return [
-          { icon: CreditCard, label: 'Billing', view: 'Dashboard' },
-          { icon: ClipboardList, label: 'Today\'s Orders', view: 'Dashboard' },
-          { icon: Package, label: 'Expenses', view: 'Dashboard' },
+          { icon: CreditCard, label: 'Billing Terminal', view: 'Dashboard' },
+          { icon: ClipboardList, label: 'Today\'s Activity', view: 'Dashboard' },
+          { icon: Package, label: 'Daily Expenses', view: 'Dashboard' },
         ];
       case UserRole.CHEF:
         return [
-          { icon: ClipboardList, label: 'Active Kitchen', view: 'Dashboard' },
-          { icon: Package, label: 'Inventory', view: 'Dashboard' },
+          { icon: ClipboardList, label: 'Kitchen Queue', view: 'Dashboard' },
+          { icon: Package, label: 'Supply Check', view: 'Dashboard' },
         ];
       case UserRole.WAITRESS:
         return [
-          { icon: TableIcon, label: 'Table Layout', view: 'Dashboard' },
-          { icon: ClipboardList, label: 'My Orders', view: 'MyOrders' },
+          { icon: TableIcon, label: 'Main Floor', view: 'Dashboard' },
+          { icon: ClipboardList, label: 'My Performance', view: 'MyOrders' },
         ];
       default:
         return [];
@@ -60,58 +60,55 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
   };
 
   return (
-    <aside className={`fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50 shadow-2xl transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-      <div className="p-6">
+    <aside className={`fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col z-50 shadow-xl transition-transform duration-300 ease-in-out border-r border-slate-800 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className="p-6 flex flex-col h-full">
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20">
+            <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-500/10">
               {appSettings.logo_url ? (
-                <img src={appSettings.logo_url} alt="Logo" className="w-[22px] h-[22px] object-contain" />
+                <img src={appSettings.logo_url} alt="Logo" className="w-[20px] h-[20px] object-contain" />
               ) : (
-                <UtensilsCrossed size={22} className="text-white" />
+                <UtensilsCrossed size={20} className="text-white" />
               )}
             </div>
-            <span className="text-xl font-black tracking-tighter truncate max-w-[140px]">{appSettings.name}</span>
+            <span className="text-lg font-bold tracking-tight truncate max-w-[130px]">{appSettings.name}</span>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white lg:hidden"
-          >
-            <X size={20} />
-          </button>
+          <button onClick={onClose} className="p-1.5 text-slate-500 hover:text-white lg:hidden transition-colors"><X size={18} /></button>
         </div>
 
-        <nav className="space-y-1.5">
+        <nav className="space-y-1">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-3 mb-3">Control Center</p>
           {getNavItems().map((item, idx) => (
             <button
               key={idx}
               onClick={() => navigate(item.view)}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all group ${activeView === item.view && activeView !== 'Settings' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all group ${activeView === item.view && activeView !== 'Settings' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
             >
-              <item.icon size={18} className={`${activeView === item.view && activeView !== 'Settings' ? 'text-white' : 'group-hover:scale-110 group-hover:text-indigo-400'} transition-all`} />
-              <span className="text-sm font-bold tracking-tight">{item.label}</span>
+              <item.icon size={18} className={`${activeView === item.view && activeView !== 'Settings' ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'} transition-colors`} />
+              <span className="text-[13px] tracking-wide">{item.label}</span>
             </button>
           ))}
         </nav>
-      </div>
 
-      <div className="mt-auto p-6 border-t border-slate-800/50 space-y-4">
-        {role === UserRole.OWNER && (
-          <button 
-            onClick={() => navigate('Settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeView === 'Settings' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
-          >
-            <Settings size={18} />
-            <span className="text-sm font-bold">Settings</span>
-          </button>
-        )}
-        <div className="flex items-center gap-3 px-4 py-3 bg-slate-800/30 rounded-2xl border border-slate-700/30">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-black text-xs text-white uppercase">
-            {userName.charAt(0)}
-          </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-xs font-black truncate text-slate-200">{userName}</p>
-            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{role.toLowerCase()}</p>
+        <div className="mt-auto pt-6 border-t border-slate-800 space-y-1">
+          {role === UserRole.OWNER && (
+            <button 
+              onClick={() => navigate('Settings')}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all ${activeView === 'Settings' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+            >
+              <Settings size={18} className={activeView === 'Settings' ? 'text-white' : 'text-slate-500'} />
+              <span className="text-[13px] tracking-wide">Settings</span>
+            </button>
+          )}
+          
+          <div className="mt-4 p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-slate-700 flex items-center justify-center font-bold text-xs text-indigo-400 border border-slate-600">
+              {userName.charAt(0)}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-xs font-bold truncate text-slate-200">{userName}</p>
+              <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider">{role.toLowerCase()}</p>
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, AppSettings } from '../types.ts';
 import { UtensilsCrossed, Lock, User as UserIcon, Loader2, Database, CheckCircle, AlertCircle, Info, RefreshCcw, Wrench } from 'lucide-react';
@@ -22,7 +21,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
   const [connectionVerified, setConnectionVerified] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check connection on mount to warn user immediately
     const checkOnStart = async () => {
       try {
         await db.checkConnection();
@@ -43,7 +41,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
 
     try {
       const staff = await db.from('staff').maybeSingle("username = ?", [username.toLowerCase()]);
-
       if (staff) {
         if (password.length >= 4) {
           onLogin({
@@ -56,32 +53,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           setError('Password must be at least 4 characters.');
         }
       } else {
-        setError('User not found. If this is a new installation, please click "First Time Setup" below to create the default "owner" account.');
+        setError('User not found. Try "owner" / "1234".');
       }
     } catch (err: any) {
-      console.error(err);
-      if (err.message?.includes('no such table')) {
-        setError('Database tables missing. Please run "First Time Setup" below.');
-      } else if (err.message?.includes('binding')) {
-        setError('D1 binding "DB" is missing. Please check your wrangler.toml or Cloudflare settings.');
-      } else {
-        setError(err.message || 'Connection failed.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkConnection = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const res = await db.checkConnection();
-      setConnectionVerified(true);
-      alert("Success: " + res.message);
-    } catch (err: any) {
-      setConnectionVerified(false);
-      setError("Connection Error: " + err.message);
+      setError(err.message || 'Connection failed.');
     } finally {
       setLoading(false);
     }
@@ -92,95 +67,71 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setSetupStatus('idle');
     setSetupLogs([]);
     try {
-      addLog("Verifying database access...");
-      await db.checkConnection();
+      addLog("Connecting to Cloud...");
+      await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, username TEXT UNIQUE, role TEXT, name TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS menu_items (id TEXT PRIMARY KEY, item_number TEXT, name TEXT, category TEXT, price REAL, is_available INTEGER, description TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, table_id TEXT, table_number INTEGER, items TEXT, status TEXT, timestamp INTEGER, total REAL, waitress_name TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER);`);
 
-      addLog("Building database schema...");
-      await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, name TEXT, username TEXT, role TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS menu_items (id TEXT PRIMARY KEY, item_number TEXT, name TEXT, category TEXT, price REAL, is_available INTEGER, description TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, table_id TEXT, table_number INTEGER, items TEXT, status TEXT, timestamp INTEGER, total REAL, waitress_name TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT)`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER)`);
-
-      addLog("Scanning for existing users...");
-      const existing = await db.from('staff').maybeSingle("username = 'owner'");
+      addLog("Seeding Users...");
+      for (const u of INITIAL_USERS) {
+        await db.from('staff').insert([u]).catch(() => {});
+      }
       
-      if (!existing) {
-        addLog("Seeding 'owner' account...");
-        await db.from('staff').insert(INITIAL_USERS);
-        
-        addLog("Setting up restaurant identity...");
-        await db.from('app_settings').insert([{
-          id: 'singleton_settings',
-          name: 'GustoFlow',
-          slogan: 'Cloud-Synced Restaurant Operations',
-          logo_url: ''
-        }]);
-
-        addLog("Populating tables and menu...");
-        await db.from('tables').insert(INITIAL_TABLES);
-        await db.from('menu_items').insert(INITIAL_MENU);
-        addLog("Data seeded successfully!");
-      } else {
-        addLog("Staff accounts already exist.");
+      addLog("Seeding Tables...");
+      for (const t of INITIAL_TABLES) {
+        await db.from('tables').insert([t]).catch(() => {});
+      }
+      
+      addLog("Seeding Menu...");
+      for (const m of INITIAL_MENU) {
+        await db.from('menu_items').insert([{...m, is_available: m.is_available ? 1 : 0}]).catch(() => {});
       }
 
-      addLog("System is ready!");
+      await db.from('app_settings').insert([appSettings]).catch(() => {});
+
       setSetupStatus('success');
-      setConnectionVerified(true);
+      addLog("Setup Completed!");
     } catch (err: any) {
-      console.error("Initialization Error:", err);
+      setError(err.message);
       setSetupStatus('error');
-      setError("Setup Failed: " + err.message);
     } finally {
       setInitializing(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500 rounded-full blur-[120px]"></div>
-      </div>
-
-      <div className="max-w-md w-full relative z-10">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center p-4 bg-indigo-600 rounded-[2rem] mb-6 shadow-2xl shadow-indigo-600/30">
-            {appSettings.logo_url ? (
-               <img src={appSettings.logo_url} alt="Logo" className="w-12 h-12 object-contain" />
-            ) : (
-              <UtensilsCrossed size={48} className="text-white" />
-            )}
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white shadow-lg mb-4">
+            <UtensilsCrossed size={32} />
           </div>
-          <h1 className="text-4xl font-black text-white tracking-tighter mb-2">{appSettings.name}</h1>
-          <p className="text-slate-400 font-medium tracking-wide">{appSettings.slogan}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{appSettings.name}</h1>
+          <p className="text-slate-500 font-medium mt-1">{appSettings.slogan}</p>
         </div>
 
-        <div className="bg-white rounded-[3rem] p-10 shadow-2xl border border-white/10">
-          {connectionVerified === false && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3">
-              <AlertCircle className="text-rose-500 shrink-0" size={20} />
-              <div>
-                <p className="text-xs font-black text-rose-600 uppercase">Connection Issue</p>
-                <p className="text-[10px] text-rose-500 font-medium">Database binding 'DB' not detected. Update your wrangler.toml or Cloudflare settings.</p>
-              </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-lg flex items-center gap-3 text-sm font-medium">
+              <AlertCircle size={18} />
+              {error}
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Username</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Username</label>
               <div className="relative">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                <input 
+                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
                   placeholder="e.g. owner"
                   required
                 />
@@ -188,115 +139,88 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Access Pin</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                <input 
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700"
-                  placeholder="••••"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                  placeholder="••••••••"
                   required
                 />
               </div>
             </div>
 
-            {error && (
-              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-in fade-in slide-in-from-top-1 space-y-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={16} />
-                  <p className="text-xs font-bold">Failed to Login</p>
-                </div>
-                <p className="text-[10px] font-medium leading-relaxed">{error}</p>
-                
-                {(error.includes('found') || error.includes('missing')) && (
-                  <button 
-                    type="button"
-                    onClick={() => { setShowSetup(true); initializeDatabase(); }}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase"
-                  >
-                    <Wrench size={12} />
-                    Auto-Repair & Seed Database
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button 
-                type="submit"
-                disabled={loading}
-                className="flex-1 flex items-center justify-center py-5 bg-indigo-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all disabled:opacity-70 uppercase tracking-widest text-sm"
-              >
-                {loading ? <Loader2 className="animate-spin mr-2" size={20} /> : 'Login'}
-              </button>
-              <button 
-                type="button"
-                onClick={checkConnection}
-                className="p-5 bg-slate-100 text-slate-500 rounded-[1.5rem] hover:bg-slate-200 transition-all"
-                title="Test Connection"
-              >
-                <RefreshCcw size={20} className={loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-indigo-600 text-white rounded-lg font-bold shadow-md hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Sign In'}
+            </button>
           </form>
-          
-          <div className="mt-8 pt-8 border-t border-slate-50 flex flex-col items-center">
+
+          <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${connectionVerified === null ? 'bg-slate-300' : connectionVerified ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight">
+                {connectionVerified === null ? 'Checking Cloud...' : connectionVerified ? 'Cloud Connected' : 'Cloud Offline (Local Mode)'}
+              </span>
+            </div>
             <button 
               onClick={() => setShowSetup(!showSetup)}
-              className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-500 transition-colors flex items-center gap-2"
+              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider flex items-center gap-1.5"
             >
-              <Database size={12} />
-              Database Management
+              <Wrench size={12} />
+              Setup
             </button>
+          </div>
 
-            {showSetup && (
-              <div className="mt-6 w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 animate-in zoom-in-95">
-                <div className="flex items-start gap-3 mb-4">
-                  <Info size={16} className="text-indigo-500 mt-1 shrink-0" />
-                  <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
-                    This utility creates the necessary tables and seeds default accounts (User: <strong>owner</strong>, Pass: <strong>1234</strong>).
-                  </p>
-                </div>
+          {showSetup && (
+            <div className="mt-6 p-5 bg-slate-50 rounded-lg border border-slate-200 animate-in slide-in-from-top-2 duration-300">
+              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <Database size={16} className="text-indigo-600" />
+                Initialize Environment
+              </h3>
+              <p className="text-[11px] text-slate-500 mb-4 font-medium leading-relaxed">
+                If this is your first run, click below to build the database schema and seed default staff accounts.
+              </p>
+              
+              <button 
+                onClick={initializeDatabase}
+                disabled={initializing}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 mb-3"
+              >
+                {initializing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCcw size={14} />}
+                Run Full Setup
+              </button>
 
-                <div className="bg-white p-3 rounded-xl border mb-4 max-h-32 overflow-y-auto font-mono text-[9px] text-slate-400">
-                  {setupLogs.length === 0 ? "Ready to initialize..." : setupLogs.map((log, i) => (
-                    <div key={i} className="mb-1 text-slate-600">{">"} {log}</div>
+              {setupLogs.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {setupLogs.map((log, i) => (
+                    <p key={i} className="text-[10px] font-mono text-slate-400 flex items-center gap-2">
+                      <span className="w-1 h-1 bg-slate-300 rounded-full" />
+                      {log}
+                    </p>
                   ))}
                 </div>
+              )}
 
-                <button 
-                  onClick={initializeDatabase}
-                  disabled={initializing}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                    setupStatus === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-black'
-                  }`}
-                >
-                  {initializing ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : setupStatus === 'success' ? (
-                    <><CheckCircle size={14} /> Ready to Log In</>
-                  ) : (
-                    <><Database size={14} /> Run System Init</>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
+              {setupStatus === 'success' && (
+                <div className="mt-3 p-2 bg-emerald-50 border border-emerald-100 rounded flex items-center gap-2 text-[10px] text-emerald-700 font-bold">
+                  <CheckCircle size={14} />
+                  System ready. Log in with owner/1234
+                </div>
+              )}
+            </div>
+          )}
         </div>
         
-        {/* Credential Reminder */}
-        <div className="mt-6 flex justify-center gap-4">
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Default User</span>
-            <span className="text-xs font-bold text-slate-400">owner</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Default Pass</span>
-            <span className="text-xs font-bold text-slate-400">1234</span>
-          </div>
-        </div>
+        <p className="text-center text-slate-400 text-xs mt-8 font-medium">
+          &copy; 2024 GustoFlow Ops. All rights reserved.
+        </p>
       </div>
     </div>
   );
