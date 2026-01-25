@@ -62,10 +62,11 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
     try {
       if (activeOrderForSelected) {
+        // UPDATE EXISTING ORDER
         const updatedItems = [...activeOrderForSelected.items, ...cart];
         const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
         
-        const { error } = await supabase
+        const { error: orderError } = await supabase
           .from('orders')
           .update({ 
             items: updatedItems, 
@@ -74,10 +75,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
           })
           .eq('id', activeOrderForSelected.id);
 
-        if (error) throw error;
-        await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
+        if (orderError) throw orderError;
+
+        // Force Table Status Update
+        await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
         addNotification(`Updated T-${selectedTable.number}`);
       } else {
+        // CREATE NEW ORDER
         const newOrderData = {
           id: Math.random().toString(36).substr(2, 9),
           table_id: selectedTable.id,
@@ -89,9 +93,10 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
           waitress_name: currentUser.name
         };
 
-        const { error } = await supabase.from('orders').insert(newOrderData);
-        if (error) throw error;
+        const { error: insertError } = await supabase.from('orders').insert([newOrderData]);
+        if (insertError) throw insertError;
         
+        // Force Table Status Update
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
         addNotification(`New Order T-${selectedTable.number}`);
       }
@@ -100,8 +105,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       setSelectedTable(null);
       setSearchQuery('');
     } catch (err: any) {
-      console.error("Order Failure:", err);
-      alert(`Could not send to kitchen: ${err.message || "Unknown Error"}. Please ensure you've updated your Supabase schema.`);
+      console.error("Critical Order Error:", err);
+      alert(`Database Error: ${err.message}. Please verify that column 'table_id' exists in your 'orders' table in Supabase.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -109,18 +114,20 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   const finishTable = async (table: Table) => {
     setIsSubmitting(true);
-    const { error } = await supabase
-      .from('tables')
-      .update({ status: TableStatus.COMPLETED })
-      .eq('id', table.id);
+    try {
+      const { error } = await supabase
+        .from('tables')
+        .update({ status: TableStatus.COMPLETED })
+        .eq('id', table.id);
 
-    if (error) {
-      alert("Failed to finalize table.");
-    } else {
-      addNotification(`Table T-${table.number} Completed`);
+      if (error) throw error;
+      addNotification(`Table T-${table.number} Ready for Bill`);
       setSelectedTable(null);
+    } catch (err: any) {
+      alert(`Finalize Error: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -129,16 +136,15 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
             <Users size={20} className="text-indigo-600" />
-            Floor Status
+            Active Floor Map
           </h2>
           <div className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-500">
-            Current Waitress: {currentUser.name}
+             Staff: {currentUser.name}
           </div>
         </div>
         
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {tables.map(table => {
-            const hasOrder = orders.some(o => o.table_id === table.id && o.status !== OrderStatus.PAID);
             const isSelected = selectedTable?.id === table.id;
             const isAssignedToOther = table.waitress_name && table.waitress_name !== currentUser.name;
             
@@ -153,7 +159,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                     : isAssignedToOther
                       ? 'border-slate-100 bg-slate-50/50 grayscale opacity-40 cursor-not-allowed'
                       : table.status === TableStatus.AVAILABLE 
-                        ? 'border-slate-100 bg-white hover:border-indigo-200' 
+                        ? 'border-slate-100 bg-white hover:border-indigo-200 shadow-sm' 
                         : table.status === TableStatus.COMPLETED
                           ? 'border-emerald-200 bg-emerald-50'
                           : 'border-amber-100 bg-amber-50/50'
@@ -175,16 +181,16 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                    <div className="mb-4 flex items-center gap-1.5">
                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter truncate max-w-[100px]">
-                       {isAssignedToOther ? `Staff: ${table.waitress_name}` : 'My Table'}
+                       {isAssignedToOther ? `Assigned: ${table.waitress_name}` : 'My Active Table'}
                      </span>
                    </div>
                 )}
 
-                {hasOrder && !isAssignedToOther && table.status !== TableStatus.AVAILABLE && (
+                {table.status !== TableStatus.AVAILABLE && !isAssignedToOther && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
                       <Clock size={12} className="text-indigo-500" />
-                      Active
+                      Tracking
                     </div>
                     {table.status !== TableStatus.COMPLETED && (
                       <button 
@@ -218,7 +224,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <div className="flex items-center gap-2 mt-1">
                     <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {activeOrderForSelected ? 'Adding to existing' : 'New Order'}
+                      {activeOrderForSelected ? 'Existing Order' : 'New Ticket'}
                     </p>
                   </div>
                 </div>
@@ -236,7 +242,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search item code..."
+                  placeholder="Type item name or code..."
                   className="w-full pl-12 pr-5 py-4 bg-white border border-slate-200 rounded-[22px] outline-none font-bold text-sm shadow-sm"
                   autoFocus
                 />
@@ -252,13 +258,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                     </div>
                     <div>
                       <p className="font-black text-slate-800 text-sm">{item.name}</p>
-                      <p className="text-[10px] font-bold text-indigo-500 tracking-wider">${item.price.toFixed(2)}</p>
+                      <p className="text-[10px] font-bold text-indigo-500 tracking-wider">${Number(item.price).toFixed(2)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => removeFromCart(item.id)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"><Minus size={16} /></button>
+                    <button onClick={() => removeFromCart(item.id)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 transition-all active:scale-95"><Minus size={16} /></button>
                     <span className="w-5 text-center font-black text-sm text-slate-900">{cart.find(i => i.menuItemId === item.id)?.quantity || 0}</span>
-                    <button onClick={() => addToCart(item)} className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl"><Plus size={16} /></button>
+                    <button onClick={() => addToCart(item)} className="w-9 h-9 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95"><Plus size={16} /></button>
                   </div>
                 </div>
               ))}
@@ -266,7 +272,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
             <div className="p-8 border-t border-slate-100 bg-slate-50/50">
               <div className="flex justify-between items-center mb-6 px-2">
-                <span className="text-xs font-black uppercase tracking-widest text-slate-500">Cart Total</span>
+                <span className="text-xs font-black uppercase tracking-widest text-slate-500">Ticket Total</span>
                 <span className="text-3xl font-black text-slate-900">
                   ${cart.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
                 </span>
@@ -287,8 +293,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <ShoppingBag size={48} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Table Overview</h3>
-              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Please select a table on the floor map to start an order.</p>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Ordering System</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium max-w-[240px] mx-auto">Select a table from the map to begin taking an order.</p>
             </div>
           </div>
         )}
