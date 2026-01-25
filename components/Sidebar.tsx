@@ -9,7 +9,7 @@ import {
   Table as TableIcon, 
   Settings,
   X,
-  Users
+  UserPlus
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,13 +32,12 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
           { icon: UtensilsCrossed, label: 'Menu List', view: 'Dashboard' },
           { icon: Package, label: 'Stock Audit', view: 'Dashboard' },
           { icon: CreditCard, label: 'Financials', view: 'Dashboard' },
-          { icon: Users, label: 'Customers', view: 'CustomerData' },
         ];
       case UserRole.CASHIER:
         return [
           { icon: CreditCard, label: 'Billing Terminal', view: 'Dashboard' },
           { icon: ClipboardList, label: 'Today\'s Activity', view: 'Dashboard' },
-          { icon: Users, label: 'Customer Leads', view: 'CustomerData' },
+          { icon: UserPlus, label: 'Customer Entry', view: 'CustomerData' },
           { icon: Package, label: 'Daily Expenses', view: 'Dashboard' },
         ];
       case UserRole.CHEF:
@@ -49,7 +48,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, userName, isOpen, onClose, onVi
       case UserRole.WAITRESS:
         return [
           { icon: TableIcon, label: 'Main Floor', view: 'Dashboard' },
-          { icon: Users, label: 'Customer Leads', view: 'CustomerData' },
+          { icon: UserPlus, label: 'Customer Entry', view: 'CustomerData' },
           { icon: ClipboardList, label: 'My Performance', view: 'MyOrders' },
         ];
       default:

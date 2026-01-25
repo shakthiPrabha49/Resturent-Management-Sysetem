@@ -89,9 +89,9 @@ export interface Transaction {
 }
 
 export interface Customer {
-  id: string;
+  phone: string; // Primary Key
   name: string;
-  phone: string;
   id_number?: string;
   created_at: number;
+  last_visit?: number;
 }

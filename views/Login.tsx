@@ -75,7 +75,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER);`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY, name TEXT, phone TEXT, id_number TEXT, created_at INTEGER);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS customers (phone TEXT PRIMARY KEY, name TEXT, id_number TEXT, created_at INTEGER, last_visit INTEGER);`);
 
       addLog("Seeding Users...");
       for (const u of INITIAL_USERS) {
@@ -89,7 +89,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       
       addLog("Seeding Menu...");
       for (const m of INITIAL_MENU) {
-        await db.from('menu_items').insert([{...m, is_available: m.is_available ? 1 : 0}]).catch(() => {});
+        // Explicitly set is_available to 1 (active) for all initial items
+        await db.from('menu_items').insert([{...m, is_available: 1}]).catch(() => {});
       }
 
       await db.from('app_settings').insert([appSettings]).catch(() => {});

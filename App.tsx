@@ -62,7 +62,13 @@ const App: React.FC = () => {
       ]);
 
       if (tablesData) setTables(tablesData);
-      if (menuData) setMenu(menuData.map((m: any) => ({ ...m, is_available: m.is_available === 1 })));
+      
+      // Fix: Use !! to cast to boolean. Ensures items seeded as 1 or true are active by default.
+      if (menuData) setMenu(menuData.map((m: any) => ({ 
+        ...m, 
+        is_available: m.is_available === 1 || m.is_available === true || m.is_available === '1'
+      })));
+
       if (ordersData) setOrders(ordersData.map((o: any) => ({ ...o, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items })));
       if (stockData) setStock(stockData);
       if (transData) setTransactions(transData);
@@ -93,7 +99,6 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: string) => {
     setCurrentView(view);
-    // When navigating to Main Floor (Dashboard), reset selected table floor plan
     if (view === 'Dashboard') {
       setSelectedTable(null);
     }
