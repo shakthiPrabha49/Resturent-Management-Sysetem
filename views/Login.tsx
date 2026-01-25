@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole, AppSettings } from '../types.ts';
-import { UtensilsCrossed, Lock, User as UserIcon, Loader2, Database, CheckCircle, AlertCircle, Info, RefreshCcw } from 'lucide-react';
+import { UtensilsCrossed, Lock, User as UserIcon, Loader2, Database, CheckCircle, AlertCircle, Info, RefreshCcw, Wrench } from 'lucide-react';
 import { db } from '../db.ts';
 import { INITIAL_USERS, INITIAL_TABLES, INITIAL_MENU } from '../constants.tsx';
 
@@ -19,6 +19,20 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
   const [showSetup, setShowSetup] = useState(false);
   const [setupStatus, setSetupStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [setupLogs, setSetupLogs] = useState<string[]>([]);
+  const [connectionVerified, setConnectionVerified] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Check connection on mount to warn user immediately
+    const checkOnStart = async () => {
+      try {
+        await db.checkConnection();
+        setConnectionVerified(true);
+      } catch (err) {
+        setConnectionVerified(false);
+      }
+    };
+    checkOnStart();
+  }, []);
 
   const addLog = (msg: string) => setSetupLogs(prev => [...prev.slice(-4), msg]);
 
@@ -42,11 +56,17 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           setError('Password must be at least 4 characters.');
         }
       } else {
-        setError('User not found. Ensure the database is initialized.');
+        setError('User not found. If this is a new installation, please click "First Time Setup" below to create the default "owner" account.');
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Connection failed.');
+      if (err.message?.includes('no such table')) {
+        setError('Database tables missing. Please run "First Time Setup" below.');
+      } else if (err.message?.includes('binding')) {
+        setError('D1 binding "DB" is missing. Please check your wrangler.toml or Cloudflare settings.');
+      } else {
+        setError(err.message || 'Connection failed.');
+      }
     } finally {
       setLoading(false);
     }
@@ -57,8 +77,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setLoading(true);
     try {
       const res = await db.checkConnection();
+      setConnectionVerified(true);
       alert("Success: " + res.message);
     } catch (err: any) {
+      setConnectionVerified(false);
       setError("Connection Error: " + err.message);
     } finally {
       setLoading(false);
@@ -70,10 +92,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setSetupStatus('idle');
     setSetupLogs([]);
     try {
-      addLog("Checking environment...");
+      addLog("Verifying database access...");
       await db.checkConnection();
 
-      addLog("Creating tables...");
+      addLog("Building database schema...");
       await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, name TEXT, username TEXT, role TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT)`);
@@ -82,14 +104,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT)`);
       await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER)`);
 
-      addLog("Checking if seed needed...");
+      addLog("Scanning for existing users...");
       const existing = await db.from('staff').maybeSingle("username = 'owner'");
       
       if (!existing) {
-        addLog("Seeding staff accounts...");
+        addLog("Seeding 'owner' account...");
         await db.from('staff').insert(INITIAL_USERS);
         
-        addLog("Seeding settings...");
+        addLog("Setting up restaurant identity...");
         await db.from('app_settings').insert([{
           id: 'singleton_settings',
           name: 'GustoFlow',
@@ -97,15 +119,17 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           logo_url: ''
         }]);
 
-        addLog("Seeding tables and menu...");
+        addLog("Populating tables and menu...");
         await db.from('tables').insert(INITIAL_TABLES);
         await db.from('menu_items').insert(INITIAL_MENU);
+        addLog("Data seeded successfully!");
       } else {
-        addLog("Database already has data.");
+        addLog("Staff accounts already exist.");
       }
 
-      addLog("Initialization complete!");
+      addLog("System is ready!");
       setSetupStatus('success');
+      setConnectionVerified(true);
     } catch (err: any) {
       console.error("Initialization Error:", err);
       setSetupStatus('error');
@@ -117,6 +141,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
+      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500 rounded-full blur-[120px]"></div>
@@ -136,16 +161,26 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
         </div>
 
         <div className="bg-white rounded-[3rem] p-10 shadow-2xl border border-white/10">
+          {connectionVerified === false && (
+            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3">
+              <AlertCircle className="text-rose-500 shrink-0" size={20} />
+              <div>
+                <p className="text-xs font-black text-rose-600 uppercase">Connection Issue</p>
+                <p className="text-[10px] text-rose-500 font-medium">Database binding 'DB' not detected. Update your wrangler.toml or Cloudflare settings.</p>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Identity</label>
+              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Username</label>
               <div className="relative">
                 <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700"
                   placeholder="e.g. owner"
                   required
                 />
@@ -153,14 +188,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Access Code</label>
+              <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3 ml-1">Access Pin</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300"
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] focus:border-indigo-500 focus:bg-white transition-all outline-none font-bold text-slate-700"
                   placeholder="••••"
                   required
                 />
@@ -168,16 +203,22 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
             </div>
 
             {error && (
-              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-in fade-in slide-in-from-top-1 space-y-2">
+              <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 animate-in fade-in slide-in-from-top-1 space-y-3">
                 <div className="flex items-center gap-2">
                   <AlertCircle size={16} />
-                  <p className="text-xs font-bold">Error</p>
+                  <p className="text-xs font-bold">Failed to Login</p>
                 </div>
                 <p className="text-[10px] font-medium leading-relaxed">{error}</p>
-                {error.includes('binding') && (
-                   <p className="text-[9px] bg-rose-600 text-white p-2 rounded-lg font-bold">
-                     Go to Pages > Settings > Functions > D1 Database Bindings. Add 'DB' as the variable name.
-                   </p>
+                
+                {(error.includes('found') || error.includes('missing')) && (
+                  <button 
+                    type="button"
+                    onClick={() => { setShowSetup(true); initializeDatabase(); }}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase"
+                  >
+                    <Wrench size={12} />
+                    Auto-Repair & Seed Database
+                  </button>
                 )}
               </div>
             )}
@@ -207,7 +248,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
               className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-500 transition-colors flex items-center gap-2"
             >
               <Database size={12} />
-              First Time Setup
+              Database Management
             </button>
 
             {showSetup && (
@@ -215,13 +256,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                 <div className="flex items-start gap-3 mb-4">
                   <Info size={16} className="text-indigo-500 mt-1 shrink-0" />
                   <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
-                    This will create the necessary tables in your D1 database. Ensure you have bound your D1 database with the name <strong>DB</strong> in Cloudflare settings.
+                    This utility creates the necessary tables and seeds default accounts (User: <strong>owner</strong>, Pass: <strong>1234</strong>).
                   </p>
                 </div>
 
                 <div className="bg-white p-3 rounded-xl border mb-4 max-h-32 overflow-y-auto font-mono text-[9px] text-slate-400">
-                  {setupLogs.length === 0 ? "Ready..." : setupLogs.map((log, i) => (
-                    <div key={i} className="mb-1">{">"} {log}</div>
+                  {setupLogs.length === 0 ? "Ready to initialize..." : setupLogs.map((log, i) => (
+                    <div key={i} className="mb-1 text-slate-600">{">"} {log}</div>
                   ))}
                 </div>
 
@@ -235,18 +276,25 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   {initializing ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : setupStatus === 'success' ? (
-                    <><CheckCircle size={14} /> Ready!</>
+                    <><CheckCircle size={14} /> Ready to Log In</>
                   ) : (
-                    <><Database size={14} /> Start Setup</>
+                    <><Database size={14} /> Run System Init</>
                   )}
                 </button>
-                
-                <div className="mt-4 flex gap-2 justify-center">
-                   <div className="px-2 py-1 bg-white rounded border text-[8px] font-bold text-slate-400">USER: owner</div>
-                   <div className="px-2 py-1 bg-white rounded border text-[8px] font-bold text-slate-400">PASS: 1234</div>
-                </div>
               </div>
             )}
+          </div>
+        </div>
+        
+        {/* Credential Reminder */}
+        <div className="mt-6 flex justify-center gap-4">
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Default User</span>
+            <span className="text-xs font-bold text-slate-400">owner</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Default Pass</span>
+            <span className="text-xs font-bold text-slate-400">1234</span>
           </div>
         </div>
       </div>
