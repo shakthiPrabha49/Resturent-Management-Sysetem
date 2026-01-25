@@ -16,10 +16,15 @@ export const onRequest: any = async (context: any) => {
   }
 
   try {
-    const { action, table, data, id, query, params } = await request.json() as any;
+    const { action, table, data, id, query, params, sql } = await request.json() as any;
 
     let result;
     switch (action) {
+      case "EXECUTE":
+        // Allows running raw SQL (like CREATE TABLE)
+        result = await env.DB.prepare(sql).run();
+        return Response.json({ success: true, result });
+
       case "SELECT_ALL":
         result = await env.DB.prepare(`SELECT * FROM ${table} ${query || ""}`).all();
         return Response.json(result.results);

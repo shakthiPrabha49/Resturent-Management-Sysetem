@@ -1,6 +1,6 @@
 
 export const db = {
-  async query(action: string, table: string, options: any = {}) {
+  async query(action: string, table: string | null, options: any = {}) {
     try {
       const response = await fetch('/api', {
         method: 'POST',
@@ -13,6 +13,10 @@ export const db = {
       console.error(`DB Error (${action} ${table}):`, err);
       return null;
     }
+  },
+
+  async execute(sql: string) {
+    return await this.query("EXECUTE", null, { sql });
   },
 
   from(table: string) {

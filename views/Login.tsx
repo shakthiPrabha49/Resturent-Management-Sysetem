@@ -25,7 +25,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setError('');
 
     try {
-      // Note: In this dev version, we check if user exists and password length is >= 4
       const staff = await db.from('staff').maybeSingle("username = ?", [username.toLowerCase()]);
 
       if (staff) {
@@ -40,7 +39,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
           setError('Password must be at least 4 characters.');
         }
       } else {
-        setError('Username not found. Try "owner" or click "System Setup" below.');
+        setError('Username not found. Please click "System Setup" below to initialize the database.');
       }
     } catch (err) {
       console.error(err);
@@ -54,22 +53,35 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
     setInitializing(true);
     setSetupStatus('idle');
     try {
-      // 1. Seed Staff
-      await db.from('staff').insert(INITIAL_USERS);
-      
-      // 2. Seed Settings
-      await db.from('app_settings').insert([{
-        id: 'singleton_settings',
-        name: 'GustoFlow',
-        slogan: 'Cloud-Synced Restaurant Operations',
-        logo_url: ''
-      }]);
+      // 1. Create Tables
+      await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, name TEXT, username TEXT, role TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS menu_items (id TEXT PRIMARY KEY, item_number TEXT, name TEXT, category TEXT, price REAL, is_available INTEGER, description TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, table_id TEXT, table_number INTEGER, items TEXT, status TEXT, timestamp INTEGER, total REAL, waitress_name TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT)`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER)`);
 
-      // 3. Seed Tables
-      await db.from('tables').insert(INITIAL_TABLES);
+      // 2. Check if already seeded
+      const existing = await db.from('staff').maybeSingle("username = 'owner'");
+      if (!existing) {
+        // 3. Seed Staff
+        await db.from('staff').insert(INITIAL_USERS);
+        
+        // 4. Seed Settings
+        await db.from('app_settings').insert([{
+          id: 'singleton_settings',
+          name: 'GustoFlow',
+          slogan: 'Cloud-Synced Restaurant Operations',
+          logo_url: ''
+        }]);
 
-      // 4. Seed Menu
-      await db.from('menu_items').insert(INITIAL_MENU);
+        // 5. Seed Tables
+        await db.from('tables').insert(INITIAL_TABLES);
+
+        // 6. Seed Menu
+        await db.from('menu_items').insert(INITIAL_MENU);
+      }
 
       setSetupStatus('success');
       setTimeout(() => setShowSetup(false), 3000);
@@ -83,7 +95,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
-      {/* Decorative Background Elements */}
       <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500 rounded-full blur-[120px]"></div>
@@ -161,7 +172,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
             {showSetup && (
               <div className="mt-6 w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 animate-in zoom-in-95">
                 <p className="text-[10px] font-bold text-slate-500 mb-4 text-center leading-relaxed">
-                  First time? Initialize your Cloudflare D1 database with default staff and menu data.
+                  First time? Initialize your Cloudflare D1 database schema and seed default staff and menu data.
                 </p>
                 <button 
                   onClick={initializeDatabase}
@@ -173,13 +184,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
                   {initializing ? (
                     <Loader2 size={14} className="animate-spin" />
                   ) : setupStatus === 'success' ? (
-                    <><CheckCircle size={14} /> Ready to Log In</>
+                    <><CheckCircle size={14} /> System Initialized</>
                   ) : (
-                    <><Database size={14} /> Initialize Database</>
+                    <><Database size={14} /> Full System Init</>
                   )}
                 </button>
                 {setupStatus === 'error' && (
-                  <p className="text-[9px] text-rose-500 mt-2 font-bold text-center">Failed. Check D1 bindings or console.</p>
+                  <p className="text-[9px] text-rose-500 mt-2 font-bold text-center">Failed. Ensure DB binding 'DB' exists in Pages settings.</p>
                 )}
                 <div className="mt-4 grid grid-cols-2 gap-2">
                    <div className="p-2 bg-white rounded-lg border border-slate-100 text-[8px] font-bold text-slate-400">
