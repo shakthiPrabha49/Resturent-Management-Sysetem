@@ -15,7 +15,7 @@ interface WaitressDashboardProps {
 }
 
 const WaitressDashboard: React.FC<WaitressDashboardProps> = ({ 
-  currentUser, tables, menu, orders, setOrders, updateTableStatus, addNotification 
+  currentUser, tables, menu, orders, updateTableStatus, addNotification 
 }) => {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [cart, setCart] = useState<OrderItem[]>([]);
@@ -24,7 +24,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   const activeOrderForSelected = useMemo(() => {
     if (!selectedTable) return null;
-    return orders.find(o => o.tableId === selectedTable.id && o.status !== OrderStatus.PAID);
+    return orders.find(o => o.table_id === selectedTable.id && o.status !== OrderStatus.PAID);
   }, [selectedTable, orders]);
 
   const filteredMenu = useMemo(() => {
@@ -34,10 +34,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       const nameMatch = item.name.toLowerCase().includes(query);
       const numberMatch = item.item_number?.toLowerCase().includes(query);
       return nameMatch || numberMatch;
-    }).sort((a, b) => {
-      if (a.item_number === query) return -1;
-      if (b.item_number === query) return 1;
-      return 0;
     });
   }, [menu, searchQuery]);
 
@@ -81,26 +77,29 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         .eq('id', activeOrderForSelected.id);
 
       if (!error) {
-        // Table already has waitress assigned from first round
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING);
         addNotification(`Items added to Table T-${selectedTable.number}`);
+      } else {
+        console.error("Update Error:", error);
       }
     } else {
-      const newOrder: Order = {
+      const newOrderData = {
         id: Math.random().toString(36).substr(2, 9),
-        tableId: selectedTable.id,
-        tableNumber: selectedTable.number,
+        table_id: selectedTable.id,
+        table_number: selectedTable.number,
         items: cart,
         status: OrderStatus.PENDING,
         timestamp: Date.now(),
         total: cartTotal,
         waitress_name: currentUser.name
       };
-      const { error } = await supabase.from('orders').insert(newOrder);
+
+      const { error } = await supabase.from('orders').insert(newOrderData);
       if (!error) {
-        // Assign current waitress to table status tracking
         await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
         addNotification(`Table T-${selectedTable.number} now served by ${currentUser.name}`);
+      } else {
+        console.error("Insert Error:", error);
       }
     }
 
@@ -111,7 +110,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   };
 
   const finishTable = async (table: Table) => {
-    const order = orders.find(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
+    const order = orders.find(o => o.table_id === table.id && o.status !== OrderStatus.PAID);
     if (!order) return;
 
     setIsSubmitting(true);
@@ -142,7 +141,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {tables.map(table => {
-            const hasOrder = orders.some(o => o.tableId === table.id && o.status !== OrderStatus.PAID);
+            const hasOrder = orders.some(o => o.table_id === table.id && o.status !== OrderStatus.PAID);
             const isSelected = selectedTable?.id === table.id;
             const isAssignedToOther = table.waitress_name && table.waitress_name !== currentUser.name;
             
@@ -198,12 +197,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                         Finish Table
                       </button>
                     )}
-                  </div>
-                )}
-
-                {isAssignedToOther && (
-                  <div className="mt-4 flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase">
-                    <Lock size={12} /> Handle Locked
                   </div>
                 )}
                 

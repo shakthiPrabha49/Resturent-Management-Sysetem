@@ -22,7 +22,6 @@ const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockEntry[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [notifications, setNotifications] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<string>('Dashboard');
@@ -38,7 +37,7 @@ const App: React.FC = () => {
   });
 
   const addNotification = useCallback((msg: string) => {
-    setNotifications(prev => [msg, ...prev].slice(0, 5));
+    console.log("Notification:", msg);
   }, []);
 
   useEffect(() => {
@@ -56,7 +55,7 @@ const App: React.FC = () => {
           supabase.from('tables').select('*').order('number'),
           supabase.from('menu_items').select('*'),
           supabase.from('orders').select('*').order('timestamp', { ascending: false }),
-          supabase.from('stock_entries').select('*').order('purchaseDate'),
+          supabase.from('stock_entries').select('*').order('purchase_date'),
           supabase.from('transactions').select('*').order('timestamp', { ascending: false }),
           supabase.from('app_settings').select('*').maybeSingle()
         ]);
@@ -72,8 +71,7 @@ const App: React.FC = () => {
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settingsResult.data));
         }
       } catch (error) {
-        console.warn("Sync Warning:", error);
-        addNotification("Working in local-first mode (Cloud sync partial).");
+        console.error("Sync Error:", error);
       } finally {
         setIsLoading(false);
       }
@@ -81,7 +79,6 @@ const App: React.FC = () => {
 
     fetchData();
 
-    // Subscribe to all changes
     const channels = [
       supabase.channel('tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, payload => {
         if (payload.new) setTables(curr => curr.map(t => t.id === payload.new.id ? payload.new as Table : t));
@@ -100,11 +97,10 @@ const App: React.FC = () => {
     ];
 
     return () => { channels.forEach(c => supabase.removeChannel(c)); };
-  }, [addNotification]);
+  }, []);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    addNotification(`Welcome back, ${user.name}!`);
     setIsSidebarOpen(false);
     setCurrentView('Dashboard');
   };
@@ -122,14 +118,14 @@ const App: React.FC = () => {
       id: Math.random().toString(36).substr(2, 9),
       type: 'IN',
       amount,
-      description: `Payment Table T-${order.tableNumber}`,
+      description: `Payment Table T-${order.table_number}`,
       timestamp: Date.now(),
       category: 'Sales'
     };
     await Promise.all([
       supabase.from('transactions').insert(newTransaction),
       supabase.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId),
-      updateTableStatus(order.tableId, TableStatus.AVAILABLE, null) // Clear waitress on pay
+      updateTableStatus(order.table_id, TableStatus.AVAILABLE, null)
     ]);
   }, [orders, updateTableStatus]);
 
@@ -167,9 +163,9 @@ const App: React.FC = () => {
       case UserRole.CASHIER:
         return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} tables={tables} />;
       case UserRole.CHEF:
-        return <ChefDashboard orders={orders} setOrders={setOrders} stock={stock} setStock={setStock} deductStock={() => {}} updateTableStatus={updateTableStatus} />;
+        return <ChefDashboard orders={orders} setOrders={() => {}} stock={stock} setStock={() => {}} deductStock={() => {}} updateTableStatus={updateTableStatus} />;
       case UserRole.WAITRESS:
-        return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} setOrders={setOrders} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
+        return <WaitressDashboard currentUser={currentUser} tables={tables} menu={menu} orders={orders} setOrders={() => {}} updateTableStatus={updateTableStatus} addNotification={addNotification} />;
       default:
         return null;
     }

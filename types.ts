@@ -43,7 +43,7 @@ export interface MenuItem {
   name: string;
   category: string;
   price: number;
-  isAvailable: boolean;
+  is_available: boolean;
   description?: string;
 }
 
@@ -64,8 +64,8 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  tableId: string;
-  tableNumber: number;
+  table_id: string;
+  table_number: number;
   items: OrderItem[];
   status: OrderStatus;
   timestamp: number;

@@ -15,14 +15,15 @@ export const INITIAL_TABLES: Table[] = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 export const INITIAL_MENU: MenuItem[] = [
-  { id: 'm1', name: 'Margherita Pizza', category: 'Main', price: 12.50, isAvailable: true, description: 'Classic tomato, mozzarella, and basil' },
-  { id: 'm2', name: 'Pasta Carbonara', category: 'Main', price: 14.00, isAvailable: true, description: 'Creamy pasta with pancetta' },
-  { id: 'm3', name: 'Greek Salad', category: 'Appetizer', price: 9.00, isAvailable: true, description: 'Fresh veggies with feta cheese' },
-  { id: 'm4', name: 'Truffle Fries', category: 'Appetizer', price: 7.50, isAvailable: true, description: 'Crispy fries with truffle oil' },
-  { id: 'm5', name: 'Tiramisu', category: 'Dessert', price: 8.00, isAvailable: true, description: 'Italian coffee-flavored cake' },
-  { id: 'm6', name: 'Espresso', category: 'Drink', price: 3.50, isAvailable: true, description: 'Strong black coffee' },
-  { id: 'm7', name: 'Red Wine (Glass)', category: 'Drink', price: 8.50, isAvailable: true, description: 'House Cabernet' },
-  { id: 'm8', name: 'Bruschetta', category: 'Appetizer', price: 6.50, isAvailable: true, description: 'Toasted bread with tomato and garlic' },
+  // Fix: renamed isAvailable to is_available to match MenuItem type definition
+  { id: 'm1', name: 'Margherita Pizza', category: 'Main', price: 12.50, is_available: true, description: 'Classic tomato, mozzarella, and basil' },
+  { id: 'm2', name: 'Pasta Carbonara', category: 'Main', price: 14.00, is_available: true, description: 'Creamy pasta with pancetta' },
+  { id: 'm3', name: 'Greek Salad', category: 'Appetizer', price: 9.00, is_available: true, description: 'Fresh veggies with feta cheese' },
+  { id: 'm4', name: 'Truffle Fries', category: 'Appetizer', price: 7.50, is_available: true, description: 'Crispy fries with truffle oil' },
+  { id: 'm5', name: 'Tiramisu', category: 'Dessert', price: 8.00, is_available: true, description: 'Italian coffee-flavored cake' },
+  { id: 'm6', name: 'Espresso', category: 'Drink', price: 3.50, is_available: true, description: 'Strong black coffee' },
+  { id: 'm7', name: 'Red Wine (Glass)', category: 'Drink', price: 8.50, is_available: true, description: 'House Cabernet' },
+  { id: 'm8', name: 'Bruschetta', category: 'Appetizer', price: 6.50, is_available: true, description: 'Toasted bread with tomato and garlic' },
 ];
 
 export const INITIAL_STOCK: StockEntry[] = [
