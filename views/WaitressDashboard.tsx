@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User, Customer } from '../types.ts';
 import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2, CreditCard, UserCircle, UserCheck, UserPlus } from 'lucide-react';
@@ -65,14 +66,18 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const prevTableStatuses = useRef<Record<string, TableStatus>>({});
   const isFirstRender = useRef(true);
 
-  // Real-time Customer Lookup
+  // Fixed Real-time Customer Lookup (now works with db.ts fix)
   useEffect(() => {
     const lookupCustomer = async () => {
-      if (customerPhone.length >= 8) {
-        const result = await db.from('customers').maybeSingle("phone = ?", [customerPhone]);
-        if (result) {
-          setLinkedCustomer(result as Customer);
-        } else {
+      if (customerPhone.trim().length >= 8) {
+        try {
+          const result = await db.from('customers').maybeSingle("phone = ?", [customerPhone.trim()]);
+          if (result) {
+            setLinkedCustomer(result as Customer);
+          } else {
+            setLinkedCustomer(null);
+          }
+        } catch (err) {
           setLinkedCustomer(null);
         }
       } else {
@@ -130,7 +135,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     return orders.find(o => o.table_id === selectedTable.id && o.status !== OrderStatus.PAID);
   }, [selectedTable, orders]);
 
-  // Set customer info if order already has it
+  // Load existing order info
   useEffect(() => {
     if (activeOrderForSelected?.customer_phone) {
       setCustomerPhone(activeOrderForSelected.customer_phone);
@@ -194,6 +199,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       playSound(SOUNDS.SEND_ORDER);
       setCart([]);
       setSelectedTable(null);
+      setCustomerPhone('');
+      setLinkedCustomer(null);
     } catch (err: any) {
       alert(`Order Error: ${err.message}`);
     } finally {
@@ -231,11 +238,12 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     
     const isOccupied = [TableStatus.ORDERING, TableStatus.COOKING, TableStatus.READY].includes(table.status);
     if (isOccupied && table.waitress_name && table.waitress_name !== currentUser.name) {
-      alert(`This table is being handled by ${table.waitress_name}. You can use the "Notify" button to send her a message if the customers need help.`);
+      alert(`Locked! Table ${table.number} belongs to ${table.waitress_name}.`);
       return;
     }
     
     setSelectedTable(table);
+    setIsCustomerBarVisible(true);
   };
 
   if (!selectedTable) {
@@ -259,7 +267,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
         <div className="flex justify-between items-center mb-8">
           <div>
             <h2 className="text-xl font-bold text-slate-800">Restaurant Floor</h2>
-            <p className="text-sm text-slate-500 font-medium">Assigned tables are locked to their respective waitress.</p>
+            <p className="text-sm text-slate-500 font-medium">Click a table to open menu and link customer.</p>
           </div>
           <button 
             onClick={() => setIsEditingLayout(!isEditingLayout)} 
@@ -337,7 +345,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                             onClick={(e) => { e.stopPropagation(); db.from('tables').update({ status: TableStatus.AVAILABLE, waitress_name: null }).eq('id', table.id); }} 
                             className="w-full py-2 bg-slate-900 text-white text-[9px] font-bold uppercase rounded-lg hover:bg-slate-800 transition-all shadow-sm"
                           >
-                            Reset Floor
+                            Reset Table
                           </button>
                         )}
                       </div>
@@ -356,29 +364,10 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
             );
           })}
         </div>
-
-        {isEditingLayout && hiddenTables.length > 0 && (
-          <div className="mt-16 bg-slate-100/50 p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-8">Tables Hidden From Layout</h3>
-            <div className="flex flex-wrap justify-center gap-4">
-              {hiddenTables.map(table => (
-                <button 
-                  key={table.id} 
-                  onClick={() => toggleTableVisibility(table.id)}
-                  className="flex items-center gap-3 px-5 py-3 bg-white rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm group"
-                >
-                  <PlusCircle size={18} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-                  Show T{table.number}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
-  // --- VIEW 2: ITEM MENU (Order Entry) ---
   return (
     <div className="max-w-7xl mx-auto animate-in slide-in-from-right-4 duration-400 pb-20">
       
@@ -391,8 +380,8 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                 <UserPlus size={22} />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white tracking-wide uppercase">Link Customer to Order</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 italic">Associate this session with a loyalty profile</p>
+                <h3 className="text-sm font-bold text-white tracking-wide uppercase">Link Customer</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 italic">Enter phone to find profile</p>
               </div>
             </div>
 
@@ -403,7 +392,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   type="tel"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Enter Customer Phone..."
+                  placeholder="Enter Phone Number..."
                   className="w-full pl-12 pr-6 py-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:ring-4 focus:ring-indigo-500/20 transition-all placeholder:text-slate-600"
                 />
               </div>
@@ -413,28 +402,21 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   <UserCheck size={20} className="text-emerald-400" />
                   <div className="flex-1">
                     <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Found Member</p>
-                    <p className="text-sm font-bold text-white">{linkedCustomer.name}</p>
+                    <p className="text-sm font-bold text-white whitespace-nowrap">{linkedCustomer.name}</p>
                   </div>
                   <button onClick={() => setIsCustomerBarVisible(false)} className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 transition-all">Done</button>
                 </div>
               ) : customerPhone.length >= 8 ? (
                 <button 
                   onClick={() => onViewChange && onViewChange('CustomerData')}
-                  className="w-full md:w-auto px-8 py-4 bg-rose-600 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 animate-in zoom-in duration-300"
+                  className="w-full md:w-auto px-8 py-4 bg-rose-600 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 animate-in zoom-in duration-300 whitespace-nowrap"
                 >
-                  <UserPlus size={16} /> Register New Customer
+                  <UserPlus size={16} /> Register
                 </button>
-              ) : (
-                <div className="hidden md:flex items-center gap-3 px-6 text-slate-600 italic text-[11px] font-medium">
-                  Waiting for phone...
-                </div>
-              )}
+              ) : null}
             </div>
 
-            <button 
-              onClick={() => setIsCustomerBarVisible(false)}
-              className="p-3 text-slate-500 hover:text-white transition-colors"
-            >
+            <button onClick={() => setIsCustomerBarVisible(false)} className="p-3 text-slate-500 hover:text-white transition-colors">
               <X size={20} />
             </button>
           </div>
@@ -444,18 +426,12 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       {/* HEADER ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div className="flex items-center gap-5">
-          <button 
-            onClick={() => setSelectedTable(null)}
-            className="p-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all shadow-sm group"
-          >
-            <ArrowLeft size={22} className="group-hover:-translate-x-1 transition-transform" />
+          <button onClick={() => setSelectedTable(null)} className="p-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
+            <ArrowLeft size={22} />
           </button>
           <div>
             <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Table T{selectedTable.number}</h2>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-sm font-semibold text-slate-500 flex items-center gap-2">
-                Serving: {selectedTable.waitress_name || currentUser.name}
-              </p>
               {linkedCustomer && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-bold uppercase border border-emerald-100">
                   <UserCheck size={10} /> Linked: {linkedCustomer.name}
@@ -464,25 +440,10 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
             </div>
           </div>
         </div>
-
         <div className="flex items-center gap-4">
-          {!isCustomerBarVisible && (
-             <button 
-               onClick={() => setIsCustomerBarVisible(true)}
-               className="p-4 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
-             >
-               <UserPlus size={18} /> Link Customer
-             </button>
-          )}
           <div className="relative w-full md:w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input 
-              type="text" 
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-              placeholder="Search menu..." 
-              className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm" 
-            />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search menu..." className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold outline-none shadow-sm" />
           </div>
         </div>
       </div>
@@ -490,101 +451,55 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         <div className="lg:col-span-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredMenu.length > 0 ? filteredMenu.map(item => {
+            {filteredMenu.map(item => {
               const cartItem = cart.find(i => i.menuItemId === item.id);
               return (
-                <div key={item.id} className={`flex flex-col p-6 rounded-2xl border transition-all ${cartItem ? 'bg-indigo-50 border-indigo-300 ring-4 ring-indigo-500/5' : 'bg-white border-slate-100 hover:border-slate-300 hover:shadow-md'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1 min-w-0 pr-4">
-                      <h4 className="font-bold text-slate-800 text-lg leading-tight truncate">{item.name}</h4>
-                      <p className="text-[12px] font-bold text-indigo-600 uppercase tracking-widest mt-1">${Number(item.price).toFixed(2)}</p>
-                    </div>
-                  </div>
-                  
-                  <p className="text-[11px] font-medium text-slate-400 line-clamp-2 italic mb-6 leading-relaxed">
-                    {item.description || "Chef's special selection prepared with fresh ingredients."}
-                  </p>
-
-                  <div className="mt-auto pt-4 border-t border-slate-100/50">
+                <div key={item.id} className={`flex flex-col p-6 rounded-2xl border transition-all ${cartItem ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-100'}`}>
+                  <h4 className="font-bold text-slate-800 text-lg leading-tight truncate">{item.name}</h4>
+                  <p className="text-[12px] font-bold text-indigo-600 uppercase tracking-widest mt-1 mb-6">${Number(item.price).toFixed(2)}</p>
+                  <div className="mt-auto">
                     {cartItem ? (
                       <div className="flex items-center gap-4 bg-white px-3 py-1.5 rounded-xl border border-indigo-100 shadow-sm w-fit">
-                        <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50 rounded-lg transition-colors text-lg">-</button>
-                        <span className="text-sm font-bold text-slate-800 w-4 text-center">{cartItem.quantity}</span>
-                        <button onClick={() => addToCart(item)} className="w-8 h-8 flex items-center justify-center text-indigo-600 font-bold hover:bg-indigo-50 rounded-lg transition-colors text-lg">+</button>
+                        <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 text-indigo-600 font-bold">-</button>
+                        <span className="text-sm font-bold w-4 text-center">{cartItem.quantity}</span>
+                        <button onClick={() => addToCart(item)} className="w-8 h-8 text-indigo-600 font-bold">+</button>
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => addToCart(item)} 
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-md"
-                      >
-                        Add to Order
-                      </button>
+                      <button onClick={() => addToCart(item)} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold">Add to Tray</button>
                     )}
                   </div>
                 </div>
               );
-            }) : (
-              <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-                <Search size={40} className="mx-auto text-slate-300 mb-4" />
-                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Menu item not found</p>
-              </div>
-            )}
+            })}
           </div>
         </div>
 
         <div className="lg:col-span-4 sticky top-28">
           <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 text-white overflow-hidden flex flex-col min-h-[500px]">
-            <div className="p-8 border-b border-white/5 bg-white/5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <ShoppingBag size={20} className="text-indigo-400" />
-                  Table Tray
-                </h3>
-                {cart.length > 0 && (
-                  <button onClick={() => setCart([])} className="text-[10px] font-bold text-rose-400 hover:text-rose-300 uppercase tracking-widest flex items-center gap-1">
-                    <Trash2 size={12} /> Reset
-                  </button>
-                )}
-              </div>
+            <div className="p-8 border-b border-white/5 bg-white/5 flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center gap-2"><ShoppingBag size={20} className="text-indigo-400" /> Current Tray</h3>
             </div>
-
             <div className="flex-1 p-8 overflow-y-auto space-y-6">
-              {cart.length > 0 ? (
-                cart.map(item => (
-                  <div key={item.menuItemId} className="flex justify-between items-center group animate-in slide-in-from-right-2">
-                    <div className="flex items-center gap-4">
-                      <div className="w-9 h-9 flex items-center justify-center bg-slate-800 rounded-xl text-[12px] font-bold text-indigo-400 border border-slate-700">
-                        {item.quantity}x
-                      </div>
-                      <div>
-                        <span className="text-sm font-bold text-slate-100 block">{item.name}</span>
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${item.price.toFixed(2)}</span>
-                      </div>
-                    </div>
-                    <span className="text-sm font-bold text-emerald-400">${(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center py-20 opacity-20">
-                  <ShoppingBag size={48} className="mb-4" />
-                  <p className="text-xs font-bold uppercase tracking-widest">Select items to start ticket</p>
+              {cart.map(item => (
+                <div key={item.menuItemId} className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-100">{item.quantity}x {item.name}</span>
+                  <span className="text-sm font-bold text-emerald-400">${(item.price * item.quantity).toFixed(2)}</span>
                 </div>
-              )}
+              ))}
             </div>
-
             <div className="p-8 bg-black/40 border-t border-white/5">
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Total Bill</span>
-                  <span className="text-3xl font-bold text-white tracking-tighter">${cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0).toFixed(2)}</span>
+                  <span className="text-3xl font-bold text-white">${cart.reduce((a, b) => a + (b.price * b.quantity), 0).toFixed(2)}</span>
                 </div>
               </div>
               <button 
                 onClick={submitOrder} 
                 disabled={cart.length === 0 || isSubmitting} 
-                className="w-full py-5 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl hover:bg-indigo-700 disabled:opacity-20 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs active:scale-95"
+                className="w-full py-5 bg-indigo-600 text-white font-bold rounded-2xl shadow-xl disabled:opacity-20 uppercase tracking-widest text-xs"
               >
-                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <><Bell size={20} /> Place Kitchen Ticket</>}
+                {isSubmitting ? <Loader2 className="animate-spin" /> : 'Send to Kitchen'}
               </button>
             </div>
           </div>

@@ -14,7 +14,9 @@ const mockDb: Record<string, any[]> = {
   }],
   orders: [],
   transactions: [],
-  stock_entries: []
+  stock_entries: [],
+  customers: [],
+  staff_pings: []
 };
 
 // Initialize LocalStorage with constants if empty
@@ -57,22 +59,35 @@ export const db = {
         case "SELECT_ALL":
           return data;
         case "SELECT_SINGLE":
-          const { params } = options;
-          // Basic param matching for login (username = ?)
+          const { params, query } = options;
           if (params && params.length > 0) {
-            return data.find((item: any) => item.username === params[0].toLowerCase()) || null;
+            const val = params[0];
+            // Fix: Intelligent lookup based on query content
+            if (query && query.toLowerCase().includes('phone')) {
+              return data.find((item: any) => item.phone === val) || null;
+            }
+            if (query && query.toLowerCase().includes('username')) {
+              return data.find((item: any) => item.username === val.toLowerCase()) || null;
+            }
           }
           return data[0] || null;
         case "INSERT":
-          const newData = [...data, options.data];
+          // Ensure data is treated as an object
+          const insertData = Array.isArray(options.data) ? options.data[0] : options.data;
+          const newData = [...data, insertData];
           setLocal(table, newData);
           return { success: true };
         case "UPDATE":
-          const updated = data.map((item: any) => item.id === options.id ? { ...item, ...options.data } : item);
+          const updateId = options.id;
+          const updated = data.map((item: any) => {
+            // Check for ID match or Phone match (if phone is PK)
+            const isMatch = item.id === updateId || item.phone === updateId;
+            return isMatch ? { ...item, ...options.data } : item;
+          });
           setLocal(table, updated);
           return { success: true };
         case "DELETE":
-          const filtered = data.filter((item: any) => item.id !== options.id);
+          const filtered = data.filter((item: any) => item.id !== options.id && item.phone !== options.id);
           setLocal(table, filtered);
           return { success: true };
         default:
@@ -86,7 +101,6 @@ export const db = {
   },
 
   async execute(sql: string) {
-    // In local mode, we just ignore raw SQL commands for schema creation
     return await this.query("EXECUTE", null, { sql });
   },
 
