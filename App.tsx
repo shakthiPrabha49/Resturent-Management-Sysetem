@@ -63,7 +63,6 @@ const App: React.FC = () => {
 
       if (tablesData) setTables(tablesData);
       
-      // Fix: Use !! to cast to boolean. Ensures items seeded as 1 or true are active by default.
       if (menuData) setMenu(menuData.map((m: any) => ({ 
         ...m, 
         is_available: m.is_available === 1 || m.is_available === true || m.is_available === '1'
@@ -182,6 +181,7 @@ const App: React.FC = () => {
             addNotification={addNotification}
             selectedTable={selectedTable}
             setSelectedTable={setSelectedTable}
+            onViewChange={handleViewChange}
           />
         );
       default:

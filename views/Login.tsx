@@ -71,7 +71,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, appSettings }) => {
       await db.execute(`CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, username TEXT UNIQUE, role TEXT, name TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS menu_items (id TEXT PRIMARY KEY, item_number TEXT, name TEXT, category TEXT, price REAL, is_available INTEGER, description TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS tables (id TEXT PRIMARY KEY, number INTEGER, status TEXT, waitress_name TEXT);`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, table_id TEXT, table_number INTEGER, items TEXT, status TEXT, timestamp INTEGER, total REAL, waitress_name TEXT);`);
+      await db.execute(`CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, table_id TEXT, table_number INTEGER, items TEXT, status TEXT, timestamp INTEGER, total REAL, waitress_name TEXT, customer_phone TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT, amount REAL, description TEXT, timestamp INTEGER, category TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS app_settings (id TEXT PRIMARY KEY, name TEXT, slogan TEXT, logo_url TEXT);`);
       await db.execute(`CREATE TABLE IF NOT EXISTS stock_entries (id TEXT PRIMARY KEY, item_name TEXT, quantity REAL, purchase_date INTEGER);`);

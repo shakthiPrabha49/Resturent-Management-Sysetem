@@ -70,6 +70,7 @@ export interface Order {
   timestamp: number;
   total: number;
   waitress_name?: string;
+  customer_phone?: string;
 }
 
 export interface StockEntry {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User } from '../types.ts';
-import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2, CreditCard, UserCircle } from 'lucide-react';
+import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User, Customer } from '../types.ts';
+import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2, CreditCard, UserCircle, UserCheck, UserPlus } from 'lucide-react';
 import { db } from '../db.ts';
 import { playSound, SOUNDS } from '../utils/audio.ts';
 
@@ -13,6 +13,7 @@ interface WaitressDashboardProps {
   addNotification: (msg: string) => void;
   selectedTable: Table | null;
   setSelectedTable: (table: Table | null) => void;
+  onViewChange?: (view: string) => void;
 }
 
 interface InternalNotification {
@@ -24,7 +25,7 @@ interface InternalNotification {
 
 const WaitressDashboard: React.FC<WaitressDashboardProps> = ({ 
   currentUser, tables, menu, orders, updateTableStatus, addNotification,
-  selectedTable, setSelectedTable
+  selectedTable, setSelectedTable, onViewChange
 }) => {
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +33,11 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const [activeNotifications, setActiveNotifications] = useState<InternalNotification[]>([]);
   const [isEditingLayout, setIsEditingLayout] = useState(false);
   
+  // Customer Linking States
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [linkedCustomer, setLinkedCustomer] = useState<Customer | null>(null);
+  const [isCustomerBarVisible, setIsCustomerBarVisible] = useState(true);
+
   const STORAGE_KEY = `gustoflow_hidden_tables_${currentUser.username}`;
   const [hiddenTableIds, setHiddenTableIds] = useState<string[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -58,6 +64,24 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   const prevTableStatuses = useRef<Record<string, TableStatus>>({});
   const isFirstRender = useRef(true);
+
+  // Real-time Customer Lookup
+  useEffect(() => {
+    const lookupCustomer = async () => {
+      if (customerPhone.length >= 8) {
+        const result = await db.from('customers').maybeSingle("phone = ?", [customerPhone]);
+        if (result) {
+          setLinkedCustomer(result as Customer);
+        } else {
+          setLinkedCustomer(null);
+        }
+      } else {
+        setLinkedCustomer(null);
+      }
+    };
+    const debounceTimer = setTimeout(lookupCustomer, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [customerPhone]);
 
   // Poll for pings from other waitresses
   useEffect(() => {
@@ -106,6 +130,13 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     return orders.find(o => o.table_id === selectedTable.id && o.status !== OrderStatus.PAID);
   }, [selectedTable, orders]);
 
+  // Set customer info if order already has it
+  useEffect(() => {
+    if (activeOrderForSelected?.customer_phone) {
+      setCustomerPhone(activeOrderForSelected.customer_phone);
+    }
+  }, [activeOrderForSelected]);
+
   const filteredMenu = useMemo(() => {
     const query = searchQuery.toLowerCase();
     return menu.filter(item => 
@@ -139,9 +170,24 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
       if (activeOrderForSelected) {
         const updatedItems = [...activeOrderForSelected.items, ...cart];
         const updatedTotal = Number(activeOrderForSelected.total) + cartTotal;
-        await db.from('orders').update({ items: updatedItems, total: updatedTotal, status: OrderStatus.PENDING }).eq('id', activeOrderForSelected.id);
+        await db.from('orders').update({ 
+          items: updatedItems, 
+          total: updatedTotal, 
+          status: OrderStatus.PENDING,
+          customer_phone: customerPhone || null
+        }).eq('id', activeOrderForSelected.id);
       } else {
-        const newOrder = { id: Math.random().toString(36).substr(2, 9), table_id: selectedTable.id, table_number: selectedTable.number, items: cart, status: OrderStatus.PENDING, timestamp: Date.now(), total: cartTotal, waitress_name: currentUser.name };
+        const newOrder = { 
+          id: Math.random().toString(36).substr(2, 9), 
+          table_id: selectedTable.id, 
+          table_number: selectedTable.number, 
+          items: cart, 
+          status: OrderStatus.PENDING, 
+          timestamp: Date.now(), 
+          total: cartTotal, 
+          waitress_name: currentUser.name,
+          customer_phone: customerPhone || null
+        };
         await db.from('orders').insert([newOrder]);
       }
       await updateTableStatus(selectedTable.id, TableStatus.ORDERING, currentUser.name);
@@ -334,7 +380,68 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   // --- VIEW 2: ITEM MENU (Order Entry) ---
   return (
-    <div className="max-w-7xl mx-auto animate-in slide-in-from-right-4 duration-400">
+    <div className="max-w-7xl mx-auto animate-in slide-in-from-right-4 duration-400 pb-20">
+      
+      {/* CUSTOMER LINK POPUP BAR */}
+      {isCustomerBarVisible && (
+        <div className="mb-8 bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-800 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20">
+                <UserPlus size={22} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white tracking-wide uppercase">Link Customer to Order</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 italic">Associate this session with a loyalty profile</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center gap-4 w-full md:flex-1 max-w-2xl">
+              <div className="relative w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input 
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="Enter Customer Phone..."
+                  className="w-full pl-12 pr-6 py-4 bg-slate-800 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:ring-4 focus:ring-indigo-500/20 transition-all placeholder:text-slate-600"
+                />
+              </div>
+
+              {linkedCustomer ? (
+                <div className="flex items-center gap-4 bg-emerald-500/10 border border-emerald-500/30 px-6 py-4 rounded-2xl w-full md:w-auto animate-in zoom-in duration-300">
+                  <UserCheck size={20} className="text-emerald-400" />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Found Member</p>
+                    <p className="text-sm font-bold text-white">{linkedCustomer.name}</p>
+                  </div>
+                  <button onClick={() => setIsCustomerBarVisible(false)} className="px-4 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-600 transition-all">Done</button>
+                </div>
+              ) : customerPhone.length >= 8 ? (
+                <button 
+                  onClick={() => onViewChange && onViewChange('CustomerData')}
+                  className="w-full md:w-auto px-8 py-4 bg-rose-600 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 animate-in zoom-in duration-300"
+                >
+                  <UserPlus size={16} /> Register New Customer
+                </button>
+              ) : (
+                <div className="hidden md:flex items-center gap-3 px-6 text-slate-600 italic text-[11px] font-medium">
+                  Waiting for phone...
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setIsCustomerBarVisible(false)}
+              className="p-3 text-slate-500 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div className="flex items-center gap-5">
           <button 
@@ -345,26 +452,38 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
           </button>
           <div>
             <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Table T{selectedTable.number}</h2>
-            <p className="text-sm font-semibold text-slate-500 flex items-center gap-2 mt-1">
-              Serving: {selectedTable.waitress_name || currentUser.name}
-              {activeOrderForSelected && (
-                <span className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold uppercase border border-indigo-100">
-                  <ChevronRight size={10} /> Appending Ticket
-                </span>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-sm font-semibold text-slate-500 flex items-center gap-2">
+                Serving: {selectedTable.waitress_name || currentUser.name}
+              </p>
+              {linkedCustomer && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-bold uppercase border border-emerald-100">
+                  <UserCheck size={10} /> Linked: {linkedCustomer.name}
+                </div>
               )}
-            </p>
+            </div>
           </div>
         </div>
 
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
-            type="text" 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            placeholder="Search menu..." 
-            className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm" 
-          />
+        <div className="flex items-center gap-4">
+          {!isCustomerBarVisible && (
+             <button 
+               onClick={() => setIsCustomerBarVisible(true)}
+               className="p-4 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+             >
+               <UserPlus size={18} /> Link Customer
+             </button>
+          )}
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+            <input 
+              type="text" 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
+              placeholder="Search menu..." 
+              className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm" 
+            />
+          </div>
         </div>
       </div>
 
