@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Order, OrderStatus, TableStatus } from '../types.ts';
 import { ChefHat, ClipboardCheck, CheckCircle2, Loader2, Clock } from 'lucide-react';
@@ -16,6 +17,9 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
   const prevOrdersCount = useRef(0);
   const isFirstRender = useRef(true);
 
+  // Local optimistic state for order item statuses
+  const [localItemStatuses, setLocalItemStatuses] = useState<Record<string, string>>({});
+
   const activeOrders = orders.filter(o => 
     [OrderStatus.PENDING, OrderStatus.COOKING, OrderStatus.READY].includes(o.status) && 
     o.status !== OrderStatus.PAID
@@ -31,7 +35,11 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
   }, [orders]);
 
   const handleUpdateItemStatus = async (order: Order, menuItemId: string, status: 'Cooking' | 'Completed') => {
-    setUpdatingId(`${order.id}-${menuItemId}`);
+    const key = `${order.id}-${menuItemId}`;
+    setUpdatingId(key);
+    
+    // OPTIMISTIC: Update local UI status immediately
+    setLocalItemStatuses(prev => ({ ...prev, [key]: status }));
     
     const updatedItems = order.items.map(item => {
       if (item.menuItemId === menuItemId) return { ...item, status };
@@ -43,20 +51,27 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
     let newOrderStatus = order.status;
     if (status === 'Cooking' && order.status === OrderStatus.PENDING) {
       newOrderStatus = OrderStatus.COOKING;
-      await updateTableStatus(order.table_id, TableStatus.COOKING);
+      updateTableStatus(order.table_id, TableStatus.COOKING);
     }
+    
     if (isFinished) {
       newOrderStatus = OrderStatus.READY;
-      await updateTableStatus(order.table_id, TableStatus.READY);
+      updateTableStatus(order.table_id, TableStatus.READY);
     }
 
     try {
       await db.from('orders').update({ items: updatedItems, status: newOrderStatus }).eq('id', order.id);
     } catch (err) {
       console.error("Chef update error:", err);
+      // Rollback optimistic state on failure
+      setLocalItemStatuses(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } finally {
+      setUpdatingId(null);
     }
-    
-    setUpdatingId(null);
   };
 
   return (
@@ -86,7 +101,10 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
           {activeOrders.map(order => {
-            const completedCount = order.items.filter(i => i.status === 'Completed').length;
+            const completedCount = order.items.filter(i => {
+              const localStatus = localItemStatuses[`${order.id}-${i.menuItemId}`];
+              return (localStatus || i.status) === 'Completed';
+            }).length;
             const progress = (completedCount / order.items.length) * 100;
 
             return (
@@ -113,37 +131,42 @@ const ChefDashboard: React.FC<ChefDashboardProps> = ({
                 </div>
 
                 <div className="p-5 flex-1 space-y-2">
-                  {order.items.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg transition-all">
-                      <div className="flex items-center gap-3">
-                        <span className="w-7 h-7 flex items-center justify-center bg-slate-50 text-indigo-600 font-bold rounded text-xs border border-slate-100">
-                          {item.quantity}x
-                        </span>
-                        <span className={`font-semibold text-sm ${item.status === 'Completed' ? 'line-through text-slate-300' : 'text-slate-700'}`}>
-                          {item.name}
-                        </span>
+                  {order.items.map((item, idx) => {
+                    const key = `${order.id}-${item.menuItemId}`;
+                    const currentStatus = localItemStatuses[key] || item.status;
+                    
+                    return (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg transition-all">
+                        <div className="flex items-center gap-3">
+                          <span className="w-7 h-7 flex items-center justify-center bg-slate-50 text-indigo-600 font-bold rounded text-xs border border-slate-100">
+                            {item.quantity}x
+                          </span>
+                          <span className={`font-semibold text-sm ${currentStatus === 'Completed' ? 'line-through text-slate-300' : 'text-slate-700'}`}>
+                            {item.name}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          {updatingId === key ? (
+                            <Loader2 size={18} className="animate-spin text-slate-300" />
+                          ) : (
+                            <>
+                              {currentStatus === 'Pending' && (
+                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Cooking')} className="px-3 py-1 bg-indigo-600 text-white rounded text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-colors">
+                                  Prep
+                                </button>
+                              )}
+                              {currentStatus === 'Cooking' && (
+                                <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Completed')} className="px-3 py-1 bg-emerald-500 text-white rounded text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-600 transition-colors">
+                                  Done
+                                </button>
+                              )}
+                              {currentStatus === 'Completed' && <CheckCircle2 size={20} className="text-emerald-500" />}
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        {updatingId === `${order.id}-${item.menuItemId}` ? (
-                          <Loader2 size={18} className="animate-spin text-slate-300" />
-                        ) : (
-                          <>
-                            {item.status === 'Pending' && (
-                              <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Cooking')} className="px-3 py-1 bg-indigo-600 text-white rounded text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-colors">
-                                Prep
-                              </button>
-                            )}
-                            {item.status === 'Cooking' && (
-                              <button onClick={() => handleUpdateItemStatus(order, item.menuItemId, 'Completed')} className="px-3 py-1 bg-emerald-500 text-white rounded text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-600 transition-colors">
-                                Done
-                              </button>
-                            )}
-                            {item.status === 'Completed' && <CheckCircle2 size={20} className="text-emerald-500" />}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

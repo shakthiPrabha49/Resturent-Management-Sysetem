@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Order, Transaction, StockEntry, MenuItem } from '../types.ts';
 import { TrendingUp, DollarSign, Package, Edit2, Check, Loader2, Hash, Plus, Trash2, X, Save } from 'lucide-react';
 import { db } from '../db.ts';
@@ -11,7 +12,7 @@ interface OwnerDashboardProps {
   setMenu: React.Dispatch<React.SetStateAction<MenuItem[]>>;
 }
 
-const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, stock, menu }) => {
+const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, stock, menu, setMenu }) => {
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [updatingMenuId, setUpdatingMenuId] = useState<string | null>(null);
   
@@ -26,17 +27,56 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
     is_available: true
   });
 
+  // Local buffer for editing to prevent lag
+  const [editBuffer, setEditBuffer] = useState<Record<string, MenuItem>>({});
+
+  useEffect(() => {
+    // Sync buffer with menu when editing starts
+    if (isEditingMenu) {
+      const buffer: Record<string, MenuItem> = {};
+      menu.forEach(m => { buffer[m.id] = { ...m }; });
+      setEditBuffer(buffer);
+    }
+  }, [isEditingMenu, menu]);
+
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
     setUpdatingMenuId(id);
-    await db.from('menu_items').update({ is_available: currentStatus ? 0 : 1 }).eq('id', id);
+    // Optimistic local update
+    setMenu(prev => prev.map(m => m.id === id ? { ...m, is_available: !currentStatus } : m));
+    
+    try {
+      await db.from('menu_items').update({ is_available: currentStatus ? 0 : 1 }).eq('id', id);
+    } catch (err) {
+      console.error(err);
+    }
     setUpdatingMenuId(null);
   };
 
-  const handleUpdateItemField = async (id: string, field: string, value: any) => {
+  const handleLocalBufferChange = (id: string, field: string, value: any) => {
+    setEditBuffer(prev => ({
+      ...prev,
+      [id]: { ...prev[id], [field]: value }
+    }));
+  };
+
+  const syncItemToDb = async (id: string) => {
     setUpdatingMenuId(id);
-    const updateData: any = {};
-    updateData[field] = value;
-    await db.from('menu_items').update(updateData).eq('id', id);
+    const item = editBuffer[id];
+    
+    // Update main state optimistically
+    setMenu(prev => prev.map(m => m.id === id ? item : m));
+
+    try {
+      await db.from('menu_items').update({
+        name: item.name,
+        item_number: item.item_number,
+        price: item.price,
+        description: item.description,
+        category: item.category
+      }).eq('id', id);
+    } catch (err) {
+      console.error("Failed to sync item:", err);
+    }
     setUpdatingMenuId(null);
   };
 
@@ -45,22 +85,33 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
     if (!newItem.name || !newItem.price) return;
     
     setUpdatingMenuId('new');
-    const itemToAdd = {
+    const itemToAdd: any = {
       ...newItem,
       id: 'm' + Math.random().toString(36).substr(2, 5),
       is_available: 1
     };
     
-    await db.from('menu_items').insert([itemToAdd]);
-    setNewItem({ name: '', item_number: '', category: 'Main', price: 0, description: '', is_available: true });
-    setShowAddForm(false);
+    try {
+      await db.from('menu_items').insert([itemToAdd]);
+      // Force an immediate update of the menu state
+      setMenu(prev => [...prev, { ...itemToAdd, is_available: true }]);
+      setNewItem({ name: '', item_number: '', category: 'Main', price: 0, description: '', is_available: true });
+      setShowAddForm(false);
+    } catch (err) {
+      console.error(err);
+    }
     setUpdatingMenuId(null);
   };
 
   const handleDeleteItem = async (id: string) => {
     if (!window.confirm("Are you sure you want to remove this item from the menu?")) return;
     setUpdatingMenuId(id);
-    await db.from('menu_items').delete().eq('id', id);
+    setMenu(prev => prev.filter(m => m.id !== id));
+    try {
+      await db.from('menu_items').delete().eq('id', id);
+    } catch (err) {
+      console.error(err);
+    }
     setUpdatingMenuId(null);
   };
 
@@ -68,7 +119,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Top Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
@@ -99,7 +149,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
         </div>
       </div>
 
-      {/* Menu Management Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 gap-4">
           <div>
@@ -125,7 +174,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
           </div>
         </div>
 
-        {/* Add New Item Form Modal-like Overlay */}
         {showAddForm && (
           <div className="p-6 bg-slate-50 border-b border-slate-200 animate-in slide-in-from-top-4 duration-300">
             <div className="flex justify-between items-center mb-4">
@@ -141,7 +189,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
                 required
               />
               <input 
-                placeholder="Item Code (e.g. M1)" 
+                placeholder="Item Code" 
                 className="p-3 bg-white border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500" 
                 value={newItem.item_number} 
                 onChange={e => setNewItem({...newItem, item_number: e.target.value})}
@@ -182,87 +230,96 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
         )}
         
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {menu.map(item => (
-            <div key={item.id} className={`bg-slate-50 p-5 rounded-xl border transition-all group ${isEditingMenu ? 'border-indigo-200 ring-2 ring-indigo-50' : 'border-slate-200 hover:bg-white hover:shadow-md'}`}>
-              
-              {isEditingMenu ? (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <input 
-                      className="w-full bg-transparent font-bold text-slate-800 border-b border-indigo-100 focus:border-indigo-500 outline-none"
-                      value={item.name}
-                      onChange={e => handleUpdateItemField(item.id, 'name', e.target.value)}
-                      placeholder="Name"
-                    />
-                    <button 
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Code</label>
+          {menu.map(item => {
+            const buffered = editBuffer[item.id] || item;
+            
+            return (
+              <div key={item.id} className={`bg-slate-50 p-5 rounded-xl border transition-all group ${isEditingMenu ? 'border-indigo-200 ring-2 ring-indigo-50' : 'border-slate-200 hover:bg-white hover:shadow-md'}`}>
+                {isEditingMenu ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-start">
                       <input 
-                        className="w-full p-2 bg-white border border-slate-200 rounded text-xs font-semibold"
-                        value={item.item_number || ''}
-                        onChange={e => handleUpdateItemField(item.id, 'item_number', e.target.value)}
-                        placeholder="M1"
+                        className="w-full bg-transparent font-bold text-slate-800 border-b border-indigo-100 focus:border-indigo-500 outline-none"
+                        value={buffered.name}
+                        onChange={e => handleLocalBufferChange(item.id, 'name', e.target.value)}
+                        onBlur={() => syncItemToDb(item.id)}
+                        placeholder="Name"
+                      />
+                      <button 
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-1.5 text-slate-300 hover:text-rose-500 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Code</label>
+                        <input 
+                          className="w-full p-2 bg-white border border-slate-200 rounded text-xs font-semibold"
+                          value={buffered.item_number || ''}
+                          onChange={e => handleLocalBufferChange(item.id, 'item_number', e.target.value)}
+                          onBlur={() => syncItemToDb(item.id)}
+                          placeholder="M1"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase">Price</label>
+                        <input 
+                          type="number" step="0.01"
+                          className="w-full p-2 bg-white border border-slate-200 rounded text-xs font-semibold"
+                          value={buffered.price}
+                          onChange={e => handleLocalBufferChange(item.id, 'price', parseFloat(e.target.value))}
+                          onBlur={() => syncItemToDb(item.id)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase">Description</label>
+                      <textarea 
+                        className="w-full p-2 bg-white border border-slate-200 rounded text-[11px] font-medium h-16 resize-none"
+                        value={buffered.description || ''}
+                        onChange={e => handleLocalBufferChange(item.id, 'description', e.target.value)}
+                        onBlur={() => syncItemToDb(item.id)}
+                        placeholder="Ingredients, spice level..."
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase">Price</label>
-                      <input 
-                        type="number" step="0.01"
-                        className="w-full p-2 bg-white border border-slate-200 rounded text-xs font-semibold"
-                        value={item.price}
-                        onChange={e => handleUpdateItemField(item.id, 'price', parseFloat(e.target.value))}
-                        placeholder="0.00"
-                      />
+
+                    <div className="flex gap-2">
+                       <button 
+                        onClick={() => toggleAvailability(item.id, item.is_available)} 
+                        className={`flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wide border transition-all ${item.is_available ? 'bg-white text-rose-600 border-rose-100 hover:bg-rose-50' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
+                      >
+                        {updatingMenuId === item.id ? <Loader2 size={12} className="animate-spin mx-auto" /> : (item.is_available ? 'Disable' : 'Enable')}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase">Description</label>
-                    <textarea 
-                      className="w-full p-2 bg-white border border-slate-200 rounded text-[11px] font-medium h-16 resize-none"
-                      value={item.description || ''}
-                      onChange={e => handleUpdateItemField(item.id, 'description', e.target.value)}
-                      placeholder="Ingredients, spice level..."
-                    />
-                  </div>
-
-                  <button 
-                    onClick={() => toggleAvailability(item.id, item.is_available)} 
-                    className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition-all ${item.is_available ? 'bg-white text-rose-600 border-rose-100 hover:bg-rose-50' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
-                  >
-                    {updatingMenuId === item.id ? <Loader2 size={14} className="animate-spin mx-auto" /> : (item.is_available ? 'Disable' : 'Enable')}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md text-[10px] font-bold border border-indigo-100">
-                      <Hash size={10} className="inline mr-1" />
-                      {item.item_number || '--'}
-                    </span>
-                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${item.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${item.is_available ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                      {item.is_available ? 'Available' : 'Unavailable'}
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md text-[10px] font-bold border border-indigo-100">
+                        <Hash size={10} className="inline mr-1" />
+                        {item.item_number || '--'}
+                      </span>
+                      <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${item.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${item.is_available ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        {item.is_available ? 'Available' : 'Unavailable'}
+                      </div>
                     </div>
-                  </div>
-                  
-                  <h4 className="font-bold text-slate-800 mb-1">{item.name}</h4>
-                  <p className="text-indigo-600 font-bold text-sm mb-3">${Number(item.price).toFixed(2)}</p>
-                  <p className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed italic border-t border-slate-200 pt-3">
-                    {item.description || "No description provided."}
-                  </p>
-                </>
-              )}
-            </div>
-          ))}
+                    
+                    <h4 className="font-bold text-slate-800 mb-1">{item.name}</h4>
+                    <p className="text-indigo-600 font-bold text-sm mb-3">${Number(item.price).toFixed(2)}</p>
+                    <p className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed italic border-t border-slate-200 pt-3">
+                      {item.description || "No description provided."}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

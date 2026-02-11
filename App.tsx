@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   User, UserRole, Table, MenuItem, Order, StockEntry, Transaction, TableStatus, OrderStatus, AppSettings 
@@ -85,7 +86,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    pollInterval.current = setInterval(fetchData, 5000);
+    // Faster polling for better real-time feel
+    pollInterval.current = setInterval(fetchData, 3000);
     return () => clearInterval(pollInterval.current);
   }, []);
 
@@ -104,15 +106,30 @@ const App: React.FC = () => {
   };
 
   const updateTableStatus = useCallback(async (tableId: string, status: TableStatus, waitressName?: string | null) => {
+    // OPTIMISTIC UPDATE: Update local state immediately
+    setTables(prev => prev.map(t => 
+      t.id === tableId ? { ...t, status, waitress_name: waitressName !== undefined ? waitressName : t.waitress_name } : t
+    ));
+
     const updateData: any = { status };
     if (waitressName !== undefined) updateData.waitress_name = waitressName;
-    await db.from('tables').update(updateData).eq('id', tableId);
-    fetchData();
+    
+    try {
+      await db.from('tables').update(updateData).eq('id', tableId);
+    } catch (err) {
+      console.error("Failed to sync table status:", err);
+      // Optional: Rollback state on error
+    }
   }, []);
 
   const processPayment = useCallback(async (orderId: string, amount: number) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
+
+    // OPTIMISTIC UPDATE: Mark order as paid and table as available immediately
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.PAID } : o));
+    setTables(prev => prev.map(t => t.id === order.table_id ? { ...t, status: TableStatus.AVAILABLE, waitress_name: null } : t));
+
     const newTransaction = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'IN',
@@ -122,13 +139,17 @@ const App: React.FC = () => {
       category: 'Sales'
     };
     
-    await db.from('transactions').insert([newTransaction]);
-    await db.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId);
-    await updateTableStatus(order.table_id, TableStatus.AVAILABLE, null);
-  }, [orders, updateTableStatus]);
+    try {
+      await db.from('transactions').insert([newTransaction]);
+      await db.from('orders').update({ status: OrderStatus.PAID }).eq('id', orderId);
+      await db.from('tables').update({ status: TableStatus.AVAILABLE, waitress_name: null }).eq('id', order.table_id);
+    } catch (err) {
+      console.error("Payment sync failed:", err);
+    }
+  }, [orders]);
 
   const addExpense = useCallback(async (amount: number, description: string) => {
-    const newTransaction = {
+    const newTransaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'OUT',
       amount,
@@ -136,8 +157,15 @@ const App: React.FC = () => {
       timestamp: Date.now(),
       category: 'Expense'
     };
-    await db.from('transactions').insert([newTransaction]);
-    fetchData();
+
+    // OPTIMISTIC UPDATE
+    setTransactions(prev => [newTransaction, ...prev]);
+
+    try {
+      await db.from('transactions').insert([newTransaction]);
+    } catch (err) {
+      console.error("Expense sync failed:", err);
+    }
   }, []);
 
   if (!currentUser) return <Login onLogin={handleLogin} appSettings={appSettings} />;
@@ -162,7 +190,7 @@ const App: React.FC = () => {
 
     switch (currentUser.role) {
       case UserRole.OWNER:
-        return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={() => {}} />;
+        return <OwnerDashboard orders={orders} transactions={transactions} stock={stock} menu={menu} setMenu={setMenu} />;
       case UserRole.CASHIER:
         return <CashierDashboard orders={orders} processPayment={processPayment} transactions={transactions} addExpense={addExpense} tables={tables} />;
       case UserRole.CHEF:
