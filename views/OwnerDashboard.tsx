@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState } from 'react';
 import { Order, Transaction, StockEntry, MenuItem } from '../types.ts';
-import { TrendingUp, Users, DollarSign, Package, Sparkles, Edit2, Check, Loader2, Hash } from 'lucide-react';
-import { getBusinessInsights } from '../geminiService.ts';
+import { TrendingUp, DollarSign, Package, Edit2, Check, Loader2, Hash } from 'lucide-react';
 import { db } from '../db.ts';
 
 interface OwnerDashboardProps {
@@ -13,18 +13,9 @@ interface OwnerDashboardProps {
 }
 
 const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, stock, menu }) => {
-  const [aiInsights, setAiInsights] = useState<string>('Analyzing business...');
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [updatingMenuId, setUpdatingMenuId] = useState<string | null>(null);
   const [editingItemNumbers, setEditingItemNumbers] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const fetchInsights = async () => {
-      const insights = await getBusinessInsights(orders, transactions, stock);
-      setAiInsights(insights || 'No insights available.');
-    };
-    fetchInsights();
-  }, [orders, transactions, stock]);
 
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
     setUpdatingMenuId(id);
@@ -63,14 +54,15 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="bg-slate-900 p-6 rounded-xl text-white shadow-md relative overflow-hidden">
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles size={16} className="text-indigo-400" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400">AI Business Insights</h3>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-lg"><TrendingUp size={20} /></div>
+            <div>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Growth</p>
+              <p className="text-2xl font-bold text-slate-800">+12%</p>
+            </div>
+          </div>
         </div>
-        <p className="text-lg font-medium leading-relaxed opacity-90 italic">"{aiInsights}"</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
