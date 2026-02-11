@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Table, MenuItem, Order, TableStatus, OrderStatus, OrderItem, User, Customer } from '../types.ts';
-import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, PlusCircle, Search, Clock, ArrowLeft, ChevronRight, Hash, Trash2, CreditCard, UserCircle, UserCheck, UserPlus } from 'lucide-react';
+import { ShoppingBag, X, Bell, Loader2, Edit3, Eye, EyeOff, Search, Clock, ArrowLeft, Hash, CreditCard, UserCircle, UserCheck, UserPlus } from 'lucide-react';
 import { db } from '../db.ts';
 import { playSound, SOUNDS } from '../utils/audio.ts';
 
@@ -34,7 +34,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   const [activeNotifications, setActiveNotifications] = useState<InternalNotification[]>([]);
   const [isEditingLayout, setIsEditingLayout] = useState(false);
   
-  // Customer Linking States
   const [customerPhone, setCustomerPhone] = useState('');
   const [linkedCustomer, setLinkedCustomer] = useState<Customer | null>(null);
   const [isCustomerBarVisible, setIsCustomerBarVisible] = useState(true);
@@ -59,14 +58,9 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     tables.filter(t => !hiddenTableIds.includes(t.id)), 
   [tables, hiddenTableIds]);
 
-  const hiddenTables = useMemo(() => 
-    tables.filter(t => hiddenTableIds.includes(t.id)), 
-  [tables, hiddenTableIds]);
-
   const prevTableStatuses = useRef<Record<string, TableStatus>>({});
   const isFirstRender = useRef(true);
 
-  // Fixed Real-time Customer Lookup (now works with db.ts fix)
   useEffect(() => {
     const lookupCustomer = async () => {
       if (customerPhone.trim().length >= 8) {
@@ -88,7 +82,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     return () => clearTimeout(debounceTimer);
   }, [customerPhone]);
 
-  // Poll for pings from other waitresses
   useEffect(() => {
     const checkPings = async () => {
       try {
@@ -135,7 +128,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
     return orders.find(o => o.table_id === selectedTable.id && o.status !== OrderStatus.PAID);
   }, [selectedTable, orders]);
 
-  // Load existing order info
   useEffect(() => {
     if (activeOrderForSelected?.customer_phone) {
       setCustomerPhone(activeOrderForSelected.customer_phone);
@@ -235,13 +227,11 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
   const handleTableClick = (table: Table) => {
     if (isEditingLayout) return;
-    
     const isOccupied = [TableStatus.ORDERING, TableStatus.COOKING, TableStatus.READY].includes(table.status);
     if (isOccupied && table.waitress_name && table.waitress_name !== currentUser.name) {
       alert(`Locked! Table ${table.number} belongs to ${table.waitress_name}.`);
       return;
     }
-    
     setSelectedTable(table);
     setIsCustomerBarVisible(true);
   };
@@ -311,11 +301,6 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                         <div className="text-[10px] font-bold text-indigo-600 truncate flex items-center gap-1">
                           <UserCircle size={10} /> {table.waitress_name}'s Table
                         </div>
-                        {isMine && tableOrder && (
-                           <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mt-1">
-                           <Clock size={10} /> {Math.floor((Date.now() - tableOrder.timestamp) / 60000)}m
-                         </div>
-                        )}
                       </div>
                     )}
 
@@ -332,7 +317,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                           onClick={(e) => handlePingWaitress(e, table)}
                           className="w-full py-2 bg-slate-100 text-slate-600 text-[9px] font-bold uppercase rounded-lg hover:bg-slate-200 transition-all border border-slate-200 flex items-center justify-center gap-1.5"
                         >
-                          <Bell size={12} /> Notify {table.waitress_name}
+                          <Bell size={12} /> Notify Staff
                         </button>
                       )
                     )}
@@ -353,12 +338,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
                   </div>
                 </button>
                 {isEditingLayout && (
-                  <button 
-                    onClick={() => toggleTableVisibility(table.id)}
-                    className="absolute -top-2 -right-2 p-1.5 bg-rose-500 text-white rounded-full shadow-lg hover:bg-rose-600 transition-colors z-10"
-                  >
-                    <EyeOff size={12} />
-                  </button>
+                  <button onClick={() => toggleTableVisibility(table.id)} className="absolute -top-2 -right-2 p-1.5 bg-rose-500 text-white rounded-full shadow-lg hover:bg-rose-600 transition-colors z-10"><EyeOff size={12} /></button>
                 )}
               </div>
             );
@@ -371,14 +351,11 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
   return (
     <div className="max-w-7xl mx-auto animate-in slide-in-from-right-4 duration-400 pb-20">
       
-      {/* CUSTOMER LINK POPUP BAR */}
       {isCustomerBarVisible && (
         <div className="mb-8 bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-800 animate-in slide-in-from-top-4 duration-500">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4 w-full md:w-auto">
-              <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20">
-                <UserPlus size={22} />
-              </div>
+              <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20"><UserPlus size={22} /></div>
               <div>
                 <h3 className="text-sm font-bold text-white tracking-wide uppercase">Link Customer</h3>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 italic">Enter phone to find profile</p>
@@ -416,26 +393,19 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               ) : null}
             </div>
 
-            <button onClick={() => setIsCustomerBarVisible(false)} className="p-3 text-slate-500 hover:text-white transition-colors">
-              <X size={20} />
-            </button>
+            <button onClick={() => setIsCustomerBarVisible(false)} className="p-3 text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
           </div>
         </div>
       )}
 
-      {/* HEADER ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div className="flex items-center gap-5">
-          <button onClick={() => setSelectedTable(null)} className="p-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all shadow-sm">
-            <ArrowLeft size={22} />
-          </button>
+          <button onClick={() => setSelectedTable(null)} className="p-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:bg-slate-50 transition-all shadow-sm"><ArrowLeft size={22} /></button>
           <div>
             <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Table T{selectedTable.number}</h2>
             <div className="flex items-center gap-3 mt-1">
               {linkedCustomer && (
-                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-bold uppercase border border-emerald-100">
-                  <UserCheck size={10} /> Linked: {linkedCustomer.name}
-                </div>
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[9px] font-bold uppercase border border-emerald-100"><UserCheck size={10} /> Linked: {linkedCustomer.name}</div>
               )}
             </div>
           </div>
@@ -456,7 +426,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               return (
                 <div key={item.id} className={`flex flex-col p-6 rounded-2xl border transition-all ${cartItem ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-100'}`}>
                   <h4 className="font-bold text-slate-800 text-lg leading-tight truncate">{item.name}</h4>
-                  <p className="text-[12px] font-bold text-indigo-600 uppercase tracking-widest mt-1 mb-6">${Number(item.price).toFixed(2)}</p>
+                  <p className="text-[12px] font-bold text-indigo-600 uppercase tracking-widest mt-1 mb-6">Rs. {Number(item.price).toFixed(2)}</p>
                   <div className="mt-auto">
                     {cartItem ? (
                       <div className="flex items-center gap-4 bg-white px-3 py-1.5 rounded-xl border border-indigo-100 shadow-sm w-fit">
@@ -476,14 +446,12 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
 
         <div className="lg:col-span-4 sticky top-28">
           <div className="bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 text-white overflow-hidden flex flex-col min-h-[500px]">
-            <div className="p-8 border-b border-white/5 bg-white/5 flex justify-between items-center">
-              <h3 className="text-lg font-bold flex items-center gap-2"><ShoppingBag size={20} className="text-indigo-400" /> Current Tray</h3>
-            </div>
+            <div className="p-8 border-b border-white/5 bg-white/5 flex justify-between items-center"><h3 className="text-lg font-bold flex items-center gap-2"><ShoppingBag size={20} className="text-indigo-400" /> Current Tray</h3></div>
             <div className="flex-1 p-8 overflow-y-auto space-y-6">
               {cart.map(item => (
                 <div key={item.menuItemId} className="flex justify-between items-center">
                   <span className="text-sm font-bold text-slate-100">{item.quantity}x {item.name}</span>
-                  <span className="text-sm font-bold text-emerald-400">${(item.price * item.quantity).toFixed(2)}</span>
+                  <span className="text-sm font-bold text-emerald-400">Rs. {(item.price * item.quantity).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -491,7 +459,7 @@ const WaitressDashboard: React.FC<WaitressDashboardProps> = ({
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Total Bill</span>
-                  <span className="text-3xl font-bold text-white">${cart.reduce((a, b) => a + (b.price * b.quantity), 0).toFixed(2)}</span>
+                  <span className="text-3xl font-bold text-white">Rs. {cart.reduce((a, b) => a + (b.price * b.quantity), 0).toFixed(2)}</span>
                 </div>
               </div>
               <button 

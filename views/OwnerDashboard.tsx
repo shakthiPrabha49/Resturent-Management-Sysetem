@@ -16,7 +16,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [updatingMenuId, setUpdatingMenuId] = useState<string | null>(null);
   
-  // States for new item
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
     name: '',
@@ -27,11 +26,9 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
     is_available: true
   });
 
-  // Local buffer for editing to prevent lag
   const [editBuffer, setEditBuffer] = useState<Record<string, MenuItem>>({});
 
   useEffect(() => {
-    // Sync buffer with menu when editing starts
     if (isEditingMenu) {
       const buffer: Record<string, MenuItem> = {};
       menu.forEach(m => { buffer[m.id] = { ...m }; });
@@ -41,7 +38,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
 
   const toggleAvailability = async (id: string, currentStatus: boolean) => {
     setUpdatingMenuId(id);
-    // Optimistic local update
     setMenu(prev => prev.map(m => m.id === id ? { ...m, is_available: !currentStatus } : m));
     
     try {
@@ -62,8 +58,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
   const syncItemToDb = async (id: string) => {
     setUpdatingMenuId(id);
     const item = editBuffer[id];
-    
-    // Update main state optimistically
     setMenu(prev => prev.map(m => m.id === id ? item : m));
 
     try {
@@ -93,7 +87,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
     
     try {
       await db.from('menu_items').insert([itemToAdd]);
-      // Force an immediate update of the menu state
       setMenu(prev => [...prev, { ...itemToAdd, is_available: true }]);
       setNewItem({ name: '', item_number: '', category: 'Main', price: 0, description: '', is_available: true });
       setShowAddForm(false);
@@ -104,7 +97,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
   };
 
   const handleDeleteItem = async (id: string) => {
-    if (!window.confirm("Are you sure you want to remove this item from the menu?")) return;
+    if (!window.confirm("Are you sure you want to remove this item?")) return;
     setUpdatingMenuId(id);
     setMenu(prev => prev.filter(m => m.id !== id));
     try {
@@ -125,7 +118,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg"><DollarSign size={20} /></div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Revenue</p>
-              <p className="text-2xl font-bold text-slate-800">${totalRevenue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-slate-800">Rs. {totalRevenue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -196,7 +189,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
               />
               <input 
                 type="number" step="0.01"
-                placeholder="Price" 
+                placeholder="Price (Rs.)" 
                 className="p-3 bg-white border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500" 
                 value={newItem.price || ''} 
                 onChange={e => setNewItem({...newItem, price: parseFloat(e.target.value)})}
@@ -284,7 +277,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
                         value={buffered.description || ''}
                         onChange={e => handleLocalBufferChange(item.id, 'description', e.target.value)}
                         onBlur={() => syncItemToDb(item.id)}
-                        placeholder="Ingredients, spice level..."
+                        placeholder="Ingredients..."
                       />
                     </div>
 
@@ -311,7 +304,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, transactions, s
                     </div>
                     
                     <h4 className="font-bold text-slate-800 mb-1">{item.name}</h4>
-                    <p className="text-indigo-600 font-bold text-sm mb-3">${Number(item.price).toFixed(2)}</p>
+                    <p className="text-indigo-600 font-bold text-sm mb-3">Rs. {Number(item.price).toFixed(2)}</p>
                     <p className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed italic border-t border-slate-200 pt-3">
                       {item.description || "No description provided."}
                     </p>
